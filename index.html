@@ -61,10 +61,12 @@
     </div>
     <div class="controls-row controls-actions">
       <button id="startBtn">Start Puzzle</button>
+      <button id="resumeBtn" class="secondary" title="Reload last autosaved session">Resume</button>
       <button id="fitBtn" class="secondary" disabled>Fit to View</button>
       <button id="arrangeBtn" class="secondary" disabled title="Slightly separate overlapping free pieces without breaking groups">Unstack</button>
       <button id="hintBtn" class="secondary" disabled>Hint</button>
       <button id="resetBtn" class="secondary" disabled>Rescatter</button>
+      <button id="cheatBtn" class="secondary cheat-btn" disabled title="Auto-place remaining pieces (toggle)">Cheat!</button>
     </div>
   </div>
   <div id="status">Load an image then Start. Desktop: scroll zoom · middle-click pan. Touch: drag pieces · 1-finger pan · pinch zoom.</div>
@@ -74,7 +76,7 @@
     </div>
     <img id="hint-img" alt="hint">
     <div class="zoom-info" id="zoomInfo">100%</div>
-    <div class="version-tag" id="versionTag">v0.3.4</div>
+    <div class="version-tag" id="versionTag">v0.4.1</div>
   </div>
   <!-- Outside #viewport so pan/touch never steals the Continue click -->
   <div id="win-overlay">
@@ -130,6 +132,7 @@
           <legend>Play</legend>
           <label>Snap distance <input type="range" id="cfg_snapFactor" min="0.2" max="0.6" step="0.02"><span data-for="cfg_snapFactor"></span></label>
           <label>Scatter spread <input type="range" id="cfg_scatterSpread" min="0.15" max="0.7" step="0.05"><span data-for="cfg_scatterSpread"></span></label>
+          <label>Cheat slide speed (ms) <input type="range" id="cfg_cheatDuration" min="10" max="2000" step="10"><span data-for="cfg_cheatDuration"></span></label>
         </fieldset>
         <fieldset>
           <legend>Look</legend>
@@ -148,6 +151,7 @@
         <p class="config-hint">Tab / path / snap changes apply on next <strong>Start Puzzle</strong>. Colors &amp; shadows apply immediately.</p>
       </div>
       <div class="config-footer">
+        <button type="button" id="cfgClearSession" class="secondary">Clear saved session</button>
         <button type="button" id="cfgReset" class="secondary">Reset defaults</button>
         <button type="button" id="cfgExport" class="secondary">Export JSON</button>
         <button type="button" id="cfgImport" class="secondary">Import JSON</button>
@@ -158,7 +162,7 @@
   </div>
 
   <p class="footer-note">
-    Classic tabs · Groups · Unstack · Config ⚙ · Scroll zoom · Middle-click / 1-finger pan · Pinch zoom
+    Autosave · Cheat! · Classic tabs · Groups · Unstack · Config ⚙ · Zoom / pan / touch
   </p>
 
   <script src="js/config.js"></script>

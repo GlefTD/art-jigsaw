@@ -63,7 +63,7 @@
       }
 
       const vt = document.getElementById('versionTag');
-      if (vt) vt.textContent = 'v' + (CFG.version || '0.3.4');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.1');
     }
     applyThemeFromConfig();
 
@@ -94,12 +94,16 @@
     const arrangeBtn = document.getElementById('arrangeBtn');
     const hintBtn = document.getElementById('hintBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const cheatBtn = document.getElementById('cheatBtn');
+    const resumeBtn = document.getElementById('resumeBtn');
     const winOverlay = document.getElementById('win-overlay');
     const hintImg = document.getElementById('hint-img');
     const closeWinBtn = document.getElementById('closeWin');
     const zoomInfo = document.getElementById('zoomInfo');
 
     let img = null;
+    let sessionImgDataUrl = null; // data URL or remote URL for autosave
+    let sessionImgIsRemote = false;
     let cols = 4, rows = 4;
     let pieceW = 0, pieceH = 0;
     let boardW = 0, boardH = 0;
@@ -207,6 +211,21 @@
 
       try {
         img = await loadImage(src);
+        // Durable image for autosave
+        if (fileInput.files && fileInput.files[0]) {
+          sessionImgIsRemote = false;
+          sessionImgDataUrl = await blobToDataUrl(fileInput.files[0]);
+        } else if (src.startsWith('data:')) {
+          sessionImgIsRemote = false;
+          sessionImgDataUrl = src;
+        } else if (src.startsWith('blob:')) {
+          sessionImgIsRemote = false;
+          sessionImgDataUrl = await blobToDataUrl(await (await fetch(src)).blob());
+        } else {
+          // Remote URL (or proxy URL on img.src)
+          sessionImgIsRemote = true;
+          sessionImgDataUrl = (img.src && !img.src.startsWith('blob:')) ? img.src : src;
+        }
       } catch (err) {
         statusEl.textContent = err.message;
         startBtn.disabled = false;
@@ -215,7 +234,13 @@
 
       cols = rows = parseInt(document.getElementById('gridSize').value, 10);
       window._pieceShape = document.getElementById('pieceShape').value || 'classic';
-      await createPuzzle();
+      stopCheat();
+      idbImageWritten = false;
+      placementDirty = false;
+      await createPuzzle(null);
+      // One-time session seed (image + empty progress) so Resume works later
+      placementDirty = true;
+      scheduleAutosave(true);
       // Free up screen space on phones/tablets after starting
       if (window.matchMedia('(max-width: 720px)').matches) {
         const panel = document.getElementById('controlsPanel');
@@ -231,9 +256,10 @@
       arrangeBtn.disabled = false;
       hintBtn.disabled = false;
       resetBtn.disabled = false;
+      if (cheatBtn) cheatBtn.disabled = false;
     }
 
-    async function createPuzzle() {
+    async function createPuzzle(restoreState) {
       // Clear
       pieces.forEach(p => p.el.remove());
       pieces = [];
@@ -253,10 +279,21 @@
       pieceW = boardW / cols;
       pieceH = boardH / rows;
 
+      // Prefer saved geometry when restoring so positions stay valid
+      if (restoreState && restoreState.boardW) {
+        boardW = restoreState.boardW;
+        boardH = restoreState.boardH;
+        pieceW = restoreState.pieceW;
+        pieceH = restoreState.pieceH;
+        if (restoreState.tabSize) tabSize = restoreState.tabSize;
+      }
+
       // Tab size — proportional, scaled by config.tabScale
       const minDim = Math.min(pieceW, pieceH);
-      const tabScale = (CFG && CFG.tabScale) || 1.35;
-      tabSize = Math.max(4, Math.min(minDim * 0.19, minDim * 0.22) * tabScale);
+      if (!(restoreState && restoreState.tabSize)) {
+        const tabScale = (CFG && CFG.tabScale) || 1.35;
+        tabSize = Math.max(4, Math.min(minDim * 0.19, minDim * 0.22) * tabScale);
+      }
 
       // Snap distance
       const snapF = (CFG && CFG.snapFactor) || 0.38;
@@ -269,19 +306,24 @@
       boardEl.style.left = '0px';
       boardEl.style.top = '0px';
 
-      // Generate consistent random tabs
-      vertTabs = [];
-      for (let r = 0; r < rows; r++) {
-        vertTabs[r] = [];
-        for (let c = 0; c < cols - 1; c++) {
-          vertTabs[r][c] = Math.random() < 0.5 ? 1 : -1;
+      // Tabs: restore from session or generate
+      if (restoreState && restoreState.vertTabs && restoreState.horizTabs) {
+        vertTabs = restoreState.vertTabs;
+        horizTabs = restoreState.horizTabs;
+      } else {
+        vertTabs = [];
+        for (let r = 0; r < rows; r++) {
+          vertTabs[r] = [];
+          for (let c = 0; c < cols - 1; c++) {
+            vertTabs[r][c] = Math.random() < 0.5 ? 1 : -1;
+          }
         }
-      }
-      horizTabs = [];
-      for (let r = 0; r < rows - 1; r++) {
-        horizTabs[r] = [];
-        for (let c = 0; c < cols; c++) {
-          horizTabs[r][c] = Math.random() < 0.5 ? 1 : -1;
+        horizTabs = [];
+        for (let r = 0; r < rows - 1; r++) {
+          horizTabs[r] = [];
+          for (let c = 0; c < cols; c++) {
+            horizTabs[r][c] = Math.random() < 0.5 ? 1 : -1;
+          }
         }
       }
 
@@ -337,32 +379,41 @@
           const correctX = c * pieceW - ox;
           const correctY = r * pieceH - oy;
 
-          const margin = Math.max(pieceW, pieceH) * 0.65 + 36;
-          const side = Math.floor(Math.random() * 4);
-          let x, y;
-
-          if (side === 0) {
-            x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
-            y = -margin - logicalH - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
-          } else if (side === 1) {
-            x = boardW + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
-            y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
-          } else if (side === 2) {
-            x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
-            y = boardH + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
+          let x, y, placedFlag = false;
+          const savedPiece = restoreState && restoreState.pieces
+            ? restoreState.pieces.find(sp => sp.r === r && sp.c === c)
+            : null;
+          if (savedPiece) {
+            x = savedPiece.left;
+            y = savedPiece.top;
+            placedFlag = !!savedPiece.placed;
           } else {
-            x = -margin - logicalW - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
-            y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
+            const margin = Math.max(pieceW, pieceH) * 0.65 + 36;
+            const side = Math.floor(Math.random() * 4);
+            if (side === 0) {
+              x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
+              y = -margin - logicalH - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
+            } else if (side === 1) {
+              x = boardW + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
+              y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
+            } else if (side === 2) {
+              x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
+              y = boardH + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
+            } else {
+              x = -margin - logicalW - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
+              y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
+            }
           }
 
           el.style.left = x + 'px';
           el.style.top = y + 'px';
-          el.style.zIndex = 10 + Math.floor(Math.random() * 40);
+          el.style.zIndex = placedFlag ? 5 : (10 + Math.floor(Math.random() * 40));
+          if (placedFlag) el.classList.add('snapped');
 
           const piece = {
             el, r, c, w: logicalW, h: logicalH,
             ox, oy, correctX, correctY,
-            placed: false,
+            placed: placedFlag,
             group: null
           };
           piece.group = [piece];
@@ -377,13 +428,34 @@
       }
       hideProgress();
 
+      // Restore groups from session (groupKey shared by members)
+      if (restoreState && restoreState.pieces) {
+        const byKey = new Map();
+        pieces.forEach(p => {
+          const sp = restoreState.pieces.find(x => x.r === p.r && x.c === p.c);
+          const key = sp && sp.groupKey != null ? sp.groupKey : (p.r + ',' + p.c);
+          if (!byKey.has(key)) byKey.set(key, []);
+          byKey.get(key).push(p);
+        });
+        byKey.forEach(g => { g.forEach(p => { p.group = g; }); });
+      }
+
+      if (restoreState && restoreState.panX != null) {
+        panX = restoreState.panX;
+        panY = restoreState.panY;
+        scale = restoreState.scale || 1;
+        applyTransform();
+      } else {
+        fitToView(true);
+      }
+
       hintImg.src = img.src;
       hintImg.style.display = 'none';
 
-      // Initial view: fit everything
-      fitToView(true);
       updateStatus();
-      statusEl.textContent = `Puzzle ready — ${cols * rows} vector interlocking pieces. Connect edges to form groups.`;
+      statusEl.textContent = restoreState
+        ? `Session restored — ${pieces.filter(p => p.placed).length}/${pieces.length} placed.`
+        : `Puzzle ready — ${cols * rows} pieces. Autosave is on.`;
     }
 
     /**
@@ -1245,8 +1317,6 @@
       });
     }
 
-    console.info('[Art Jigsaw] v0.3.4 · cors-proxy · shadow-defaults · wrap-0.3.x');
-
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startPuzzle();
     });
@@ -1292,6 +1362,7 @@
         shadowStrength: 'cfg_shadowStrength',
         shadowBlur: 'cfg_shadowBlur',
         createBatchSize: 'cfg_createBatchSize',
+        cheatDuration: 'cfg_cheatDuration',
         reduceMotion: 'cfg_reduceMotion'
       };
 
@@ -1403,3 +1474,356 @@
         });
       }
     })();
+
+
+
+    // ========== Session autosave (v0.4.1 — light) ==========
+    const SESSION_META_KEY = 'art-jigsaw-session-meta';
+    const IDB_NAME = 'art-jigsaw-db';
+    const IDB_STORE = 'session';
+    let autosaveTimer = null;
+    let idbImageWritten = false;   // write image blob once per puzzle
+    let placementDirty = false;    // only save after a real board placement
+    let cheatActive = false;
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(blob);
+      });
+    }
+
+    function openSessionDb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbSet(key, value) {
+      const db = await openSessionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function idbGet(key) {
+      const db = await openSessionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbDel(key) {
+      const db = await openSessionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function buildSessionPayload() {
+      if (!pieces.length || !img) return null;
+      const groupKeys = new Map();
+      let gid = 0;
+      pieces.forEach(p => {
+        if (!groupKeys.has(p.group)) groupKeys.set(p.group, gid++);
+      });
+      return {
+        version: '0.4.1',
+        savedAt: Date.now(),
+        cols, rows,
+        shape: window._pieceShape || 'classic',
+        boardW, boardH, pieceW, pieceH, tabSize,
+        vertTabs, horizTabs,
+        panX, panY, scale,
+        imgRemote: sessionImgIsRemote,
+        imageUrl: sessionImgIsRemote ? sessionImgDataUrl : null,
+        pieces: pieces.map(p => ({
+          r: p.r, c: p.c,
+          left: parseFloat(p.el.style.left),
+          top: parseFloat(p.el.style.top),
+          placed: !!p.placed,
+          groupKey: groupKeys.get(p.group)
+        }))
+      };
+    }
+
+    /** Save meta always light; image only once. */
+    async function saveSession(force) {
+      try {
+        if (!placementDirty && !force) return;
+        const payload = buildSessionPayload();
+        if (!payload) return;
+
+        // Image: write at most once per loaded puzzle (huge payload)
+        if (!idbImageWritten && sessionImgDataUrl && !sessionImgIsRemote) {
+          await idbSet('image', sessionImgDataUrl);
+          idbImageWritten = true;
+        } else if (!idbImageWritten && sessionImgIsRemote && sessionImgDataUrl) {
+          // remote: only store URL inside meta (already in payload.imageUrl)
+          idbImageWritten = true;
+        }
+
+        await idbSet('meta', payload);
+        try {
+          localStorage.setItem(SESSION_META_KEY, JSON.stringify({
+            savedAt: payload.savedAt,
+            cols: payload.cols,
+            rows: payload.rows,
+            placed: payload.pieces.filter(x => x.placed).length,
+            total: payload.pieces.length
+          }));
+        } catch (_) {}
+        placementDirty = false;
+      } catch (err) {
+        console.warn('autosave failed', err);
+      }
+    }
+
+    function scheduleAutosave(force) {
+      // Only queue after placement (or forced)
+      if (!force && !placementDirty) return;
+      const delay = force ? 80 : 600;
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => saveSession(true), delay);
+    }
+
+    /** Call this only when a piece/group is locked onto the board. */
+    function onPiecePlacedSave() {
+      placementDirty = true;
+      scheduleAutosave(false);
+    }
+
+    async function clearSession() {
+      try {
+        await idbDel('meta');
+        await idbDel('image');
+        localStorage.removeItem(SESSION_META_KEY);
+        idbImageWritten = false;
+        placementDirty = false;
+      } catch (_) {}
+      statusEl.textContent = 'Saved session cleared.';
+      updateResumeButton();
+    }
+
+    function updateResumeButton() {
+      if (!resumeBtn) return;
+      try {
+        const hint = localStorage.getItem(SESSION_META_KEY);
+        if (!hint) { resumeBtn.disabled = true; return; }
+        const info = JSON.parse(hint);
+        resumeBtn.disabled = false;
+        resumeBtn.title = `Resume ${info.placed || 0}/${info.total || '?'} · ${info.cols}×${info.rows}`;
+      } catch (_) {
+        resumeBtn.disabled = true;
+      }
+    }
+
+    async function tryRestoreSession() {
+      try {
+        stopCheat();
+        const meta = await idbGet('meta');
+        if (!meta || !meta.pieces || !meta.pieces.length) {
+          statusEl.textContent = 'No saved session found.';
+          return false;
+        }
+        const imageData = await idbGet('image');
+        const src = imageData || meta.imageUrl || null;
+        if (!src) {
+          statusEl.textContent = 'Session found but image is missing. Start a new puzzle.';
+          return false;
+        }
+
+        statusEl.textContent = 'Restoring session…';
+        showProgress('Restoring session…', 5);
+        await yieldFrame();
+
+        img = await loadImage(src);
+        sessionImgDataUrl = src;
+        sessionImgIsRemote = !!meta.imgRemote && !String(src).startsWith('data:');
+        idbImageWritten = true; // already in IDB
+        placementDirty = false;
+
+        cols = rows = meta.cols;
+        window._pieceShape = meta.shape || 'classic';
+        const gs = document.getElementById('gridSize');
+        if (gs) gs.value = String(cols);
+        const ps = document.getElementById('pieceShape');
+        if (ps) ps.value = window._pieceShape;
+
+        await createPuzzle(meta);
+        hideProgress();
+        startBtn.disabled = false;
+        fitBtn.disabled = false;
+        arrangeBtn.disabled = false;
+        hintBtn.disabled = false;
+        resetBtn.disabled = false;
+        if (cheatBtn) cheatBtn.disabled = false;
+        updateResumeButton();
+        return true;
+      } catch (err) {
+        console.warn('restore failed', err);
+        hideProgress();
+        statusEl.textContent = 'Restore failed. Try Start Puzzle instead.';
+        return false;
+      }
+    }
+
+    // ========== Cheat mode ==========
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    function stopCheat() {
+      cheatActive = false;
+      if (cheatBtn) {
+        cheatBtn.classList.remove('active');
+        cheatBtn.textContent = 'Cheat!';
+      }
+    }
+
+    function animateGroupHome(group, duration) {
+      return new Promise(resolve => {
+        const ref = group[0];
+        const x0 = parseFloat(ref.el.style.left);
+        const y0 = parseFloat(ref.el.style.top);
+        const dx = ref.correctX - x0;
+        const dy = ref.correctY - y0;
+        const starts = group.map(p => ({
+          p,
+          x0: parseFloat(p.el.style.left),
+          y0: parseFloat(p.el.style.top),
+          x1: parseFloat(p.el.style.left) + dx,
+          y1: parseFloat(p.el.style.top) + dy
+        }));
+        group.forEach(p => { p.el.style.zIndex = 180; });
+        const t0 = performance.now();
+        function frame(now) {
+          if (!cheatActive) { resolve(false); return; }
+          const t = Math.min(1, (now - t0) / duration);
+          const e = easeOutCubic(t);
+          starts.forEach(({ p, x0, y0, x1, y1 }) => {
+            p.el.style.left = (x0 + (x1 - x0) * e) + 'px';
+            p.el.style.top = (y0 + (y1 - y0) * e) + 'px';
+          });
+          if (t < 1) {
+            requestAnimationFrame(frame);
+          } else {
+            starts.forEach(({ p, x1, y1 }) => {
+              p.el.style.left = x1 + 'px';
+              p.el.style.top = y1 + 'px';
+              p.placed = true;
+              p.el.classList.add('snapped');
+              p.el.style.zIndex = 5;
+            });
+            // Merge all placed group members into one shared group array
+            const merged = [];
+            const seen = new Set();
+            starts.forEach(({ p }) => {
+              p.group.forEach(m => {
+                if (!seen.has(m)) { seen.add(m); merged.push(m); }
+              });
+            });
+            merged.forEach(m => { m.group = merged; });
+            flashPieces(starts.map(s => s.p));
+            onPiecePlacedSave();
+            resolve(true);
+          }
+        }
+        requestAnimationFrame(frame);
+      });
+    }
+
+    async function runCheatLoop() {
+      const duration = Math.max(10, (CFG && CFG.cheatDuration) || 550);
+      while (cheatActive) {
+        const free = pieces.filter(p => !p.placed);
+        if (!free.length) {
+          stopCheat();
+          checkWin();
+          scheduleAutosave(true);
+          break;
+        }
+        // Unique free groups — place one group at a time
+        const seen = new Set();
+        const groups = [];
+        free.forEach(p => {
+          if (seen.has(p.group)) return;
+          seen.add(p.group);
+          groups.push(p.group);
+        });
+        // Prefer larger groups first for nicer assembly
+        groups.sort((a, b) => b.length - a.length);
+        const g = groups[0];
+        const ok = await animateGroupHome(g, duration);
+        if (!ok || !cheatActive) break;
+        updateStatus();
+        await yieldFrame();
+      }
+      scheduleAutosave(true);
+    }
+
+    function toggleCheat() {
+      if (!pieces.length) return;
+      if (cheatActive) {
+        stopCheat();
+        statusEl.textContent = 'Cheat paused — continue manually.';
+        scheduleAutosave(true);
+        return;
+      }
+      cheatActive = true;
+      if (cheatBtn) {
+        cheatBtn.classList.add('active');
+        cheatBtn.textContent = 'Stop Cheat';
+      }
+      statusEl.textContent = 'Cheat mode — pieces sliding home…';
+      runCheatLoop();
+    }
+
+    if (cheatBtn) cheatBtn.addEventListener('click', toggleCheat);
+
+    // Stop cheat if user grabs a piece
+    const _origOnPiecePointerDown = typeof onPiecePointerDown === 'function' ? null : null;
+    // Hook via wrapper: monkey-patch after definition is hard; listen on world
+    world.addEventListener('pointerdown', (e) => {
+      if (cheatActive && e.target && e.target.closest && e.target.closest('.piece')) {
+        stopCheat();
+      }
+    }, true);
+
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', async () => {
+        resumeBtn.disabled = true;
+        await tryRestoreSession();
+        updateResumeButton();
+      });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && placementDirty) saveSession(true);
+    });
+    window.addEventListener('pagehide', () => {
+      if (placementDirty) saveSession(true);
+    });
+
+    const clearSessionBtn = document.getElementById('cfgClearSession');
+    if (clearSessionBtn) {
+      clearSessionBtn.addEventListener('click', () => clearSession());
+    }
+
+    updateResumeButton();
+    console.info('[Art Jigsaw] v0.4.1 · light-autosave · resume-btn · cheat-10ms');

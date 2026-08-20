@@ -1,8 +1,9 @@
 /**
- * Art Jigsaw — default config (v0.3.4) — last 0.3.x before 0.4.0
+ * Art Jigsaw — default config (v0.4.0)
+ * Autosave + Cheat mode
  */
 window.JIGSAW_DEFAULTS = {
-  version: '0.3.4',
+  version: '0.4.1',
 
   tabScale: 2,
   tabBaseFactor: 0.55,
@@ -27,5 +28,10 @@ window.JIGSAW_DEFAULTS = {
 
   maxBaseSize: 1400,
   reduceMotion: false,
-  createBatchSize: 256
+  createBatchSize: 256,
+
+  /** Cheat auto-place duration per group (ms). Lower = faster */
+  cheatDuration: 550,
+  /** Autosave debounce (ms) after moves */
+  autosaveDebounce: 900
 };

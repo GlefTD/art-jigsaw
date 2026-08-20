@@ -454,3 +454,10 @@
       border-radius: 4px;
       transition: width 0.12s linear;
     }
+
+    .cheat-btn.active {
+      background: #6b2a2a !important;
+      border-color: #e07070 !important;
+      color: #ffe0e0 !important;
+      box-shadow: 0 0 0 1px rgba(224,112,112,0.35);
+    }
