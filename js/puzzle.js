@@ -257,22 +257,26 @@
       const shoulder = isClassic ? t * 0.52 : t * 0.76;
 
       // Horizontal tab, left → right. s > 0 = out upward (-y)
-      // Uses 4 cubic segments for a smoother bulb (less "low-poly" look when zoomed)
+      // Classic: near-circular bulb (kappa 0.5523)
       function tabH(cx, cy, s) {
         if (isClassic) {
+          const k = 0.5523;
+          const r = headR * 0.95;
+          const tip = cy - s * (neckW * 0.35 + r * 2 * 0.92);
+          const midY = cy - s * (neckW * 0.35 + r * 0.92);
           return [
             `L ${f(cx - shoulder)} ${f(cy)}`,
-            `C ${f(cx - shoulder)} ${f(cy - s * neckW * 0.5)}`,
-              `${f(cx - headR * 0.85)} ${f(cy - s * headR * 0.2)}`,
-              `${f(cx - headR * 0.78)} ${f(cy - s * headR * 0.55)}`,
-            `C ${f(cx - headR * 0.72)} ${f(cy - s * headR * 0.88)}`,
-              `${f(cx - headR * 0.42)} ${f(cy - s * headR * 1.12)}`,
-              `${f(cx)} ${f(cy - s * headR * 1.12)}`,
-            `C ${f(cx + headR * 0.42)} ${f(cy - s * headR * 1.12)}`,
-              `${f(cx + headR * 0.72)} ${f(cy - s * headR * 0.88)}`,
-              `${f(cx + headR * 0.78)} ${f(cy - s * headR * 0.55)}`,
-            `C ${f(cx + headR * 0.85)} ${f(cy - s * headR * 0.2)}`,
-              `${f(cx + shoulder)} ${f(cy - s * neckW * 0.5)}`,
+            `C ${f(cx - shoulder)} ${f(cy - s * neckW * 0.4)}`,
+              `${f(cx - r)} ${f(cy - s * neckW * 0.15)}`,
+              `${f(cx - r)} ${f(midY)}`,
+            `C ${f(cx - r)} ${f(midY - s * r * k)}`,
+              `${f(cx - r * k)} ${f(tip)}`,
+              `${f(cx)} ${f(tip)}`,
+            `C ${f(cx + r * k)} ${f(tip)}`,
+              `${f(cx + r)} ${f(midY - s * r * k)}`,
+              `${f(cx + r)} ${f(midY)}`,
+            `C ${f(cx + r)} ${f(cy - s * neckW * 0.15)}`,
+              `${f(cx + shoulder)} ${f(cy - s * neckW * 0.4)}`,
               `${f(cx + shoulder)} ${f(cy)}`
           ].join(' ');
         }
@@ -293,19 +297,23 @@
       // Vertical tab, top → bottom. s > 0 = out right (+x)
       function tabV(cx, cy, s) {
         if (isClassic) {
+          const k = 0.5523;
+          const r = headR * 0.95;
+          const tip = cx + s * (neckW * 0.35 + r * 2 * 0.92);
+          const midX = cx + s * (neckW * 0.35 + r * 0.92);
           return [
             `L ${f(cx)} ${f(cy - shoulder)}`,
-            `C ${f(cx + s * neckW * 0.5)} ${f(cy - shoulder)}`,
-              `${f(cx + s * headR * 0.2)} ${f(cy - headR * 0.85)}`,
-              `${f(cx + s * headR * 0.55)} ${f(cy - headR * 0.78)}`,
-            `C ${f(cx + s * headR * 0.88)} ${f(cy - headR * 0.72)}`,
-              `${f(cx + s * headR * 1.12)} ${f(cy - headR * 0.42)}`,
-              `${f(cx + s * headR * 1.12)} ${f(cy)}`,
-            `C ${f(cx + s * headR * 1.12)} ${f(cy + headR * 0.42)}`,
-              `${f(cx + s * headR * 0.88)} ${f(cy + headR * 0.72)}`,
-              `${f(cx + s * headR * 0.55)} ${f(cy + headR * 0.78)}`,
-            `C ${f(cx + s * headR * 0.2)} ${f(cy + headR * 0.85)}`,
-              `${f(cx + s * neckW * 0.5)} ${f(cy + shoulder)}`,
+            `C ${f(cx + s * neckW * 0.4)} ${f(cy - shoulder)}`,
+              `${f(cx + s * neckW * 0.15)} ${f(cy - r)}`,
+              `${f(midX)} ${f(cy - r)}`,
+            `C ${f(midX + s * r * k)} ${f(cy - r)}`,
+              `${f(tip)} ${f(cy - r * k)}`,
+              `${f(tip)} ${f(cy)}`,
+            `C ${f(tip)} ${f(cy + r * k)}`,
+              `${f(midX + s * r * k)} ${f(cy + r)}`,
+              `${f(midX)} ${f(cy + r)}`,
+            `C ${f(cx + s * neckW * 0.15)} ${f(cy + r)}`,
+              `${f(cx + s * neckW * 0.4)} ${f(cy + shoulder)}`,
               `${f(cx)} ${f(cy + shoulder)}`
           ].join(' ');
         }
@@ -348,18 +356,22 @@
         const mid = x + w / 2;
         const s = tabs.bottom;
         if (isClassic) {
+          const k = 0.5523;
+          const r = headR * 0.95;
+          const tip = y + h + s * (neckW * 0.35 + r * 2 * 0.92);
+          const midY = y + h + s * (neckW * 0.35 + r * 0.92);
           d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
-          d += ` C ${f(mid + shoulder)} ${f(y + h + s * neckW * 0.5)}`;
-          d += ` ${f(mid + headR * 0.85)} ${f(y + h + s * headR * 0.2)}`;
-          d += ` ${f(mid + headR * 0.78)} ${f(y + h + s * headR * 0.55)}`;
-          d += ` C ${f(mid + headR * 0.72)} ${f(y + h + s * headR * 0.88)}`;
-          d += ` ${f(mid + headR * 0.42)} ${f(y + h + s * headR * 1.12)}`;
-          d += ` ${f(mid)} ${f(y + h + s * headR * 1.12)}`;
-          d += ` C ${f(mid - headR * 0.42)} ${f(y + h + s * headR * 1.12)}`;
-          d += ` ${f(mid - headR * 0.72)} ${f(y + h + s * headR * 0.88)}`;
-          d += ` ${f(mid - headR * 0.78)} ${f(y + h + s * headR * 0.55)}`;
-          d += ` C ${f(mid - headR * 0.85)} ${f(y + h + s * headR * 0.2)}`;
-          d += ` ${f(mid - shoulder)} ${f(y + h + s * neckW * 0.5)}`;
+          d += ` C ${f(mid + shoulder)} ${f(y + h + s * neckW * 0.4)}`;
+          d += ` ${f(mid + r)} ${f(y + h + s * neckW * 0.15)}`;
+          d += ` ${f(mid + r)} ${f(midY)}`;
+          d += ` C ${f(mid + r)} ${f(midY + s * r * k)}`;
+          d += ` ${f(mid + r * k)} ${f(tip)}`;
+          d += ` ${f(mid)} ${f(tip)}`;
+          d += ` C ${f(mid - r * k)} ${f(tip)}`;
+          d += ` ${f(mid - r)} ${f(midY + s * r * k)}`;
+          d += ` ${f(mid - r)} ${f(midY)}`;
+          d += ` C ${f(mid - r)} ${f(y + h + s * neckW * 0.15)}`;
+          d += ` ${f(mid - shoulder)} ${f(y + h + s * neckW * 0.4)}`;
           d += ` ${f(mid - shoulder)} ${f(y + h)}`;
         } else {
           d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
@@ -383,18 +395,22 @@
         const mid = y + h / 2;
         const s = tabs.left;
         if (isClassic) {
+          const k = 0.5523;
+          const r = headR * 0.95;
+          const tip = x - s * (neckW * 0.35 + r * 2 * 0.92);
+          const midX = x - s * (neckW * 0.35 + r * 0.92);
           d += ` L ${f(x)} ${f(mid + shoulder)}`;
-          d += ` C ${f(x - s * neckW * 0.5)} ${f(mid + shoulder)}`;
-          d += ` ${f(x - s * headR * 0.2)} ${f(mid + headR * 0.85)}`;
-          d += ` ${f(x - s * headR * 0.55)} ${f(mid + headR * 0.78)}`;
-          d += ` C ${f(x - s * headR * 0.88)} ${f(mid + headR * 0.72)}`;
-          d += ` ${f(x - s * headR * 1.12)} ${f(mid + headR * 0.42)}`;
-          d += ` ${f(x - s * headR * 1.12)} ${f(mid)}`;
-          d += ` C ${f(x - s * headR * 1.12)} ${f(mid - headR * 0.42)}`;
-          d += ` ${f(x - s * headR * 0.88)} ${f(mid - headR * 0.72)}`;
-          d += ` ${f(x - s * headR * 0.55)} ${f(mid - headR * 0.78)}`;
-          d += ` C ${f(x - s * headR * 0.2)} ${f(mid - headR * 0.85)}`;
-          d += ` ${f(x - s * neckW * 0.5)} ${f(mid - shoulder)}`;
+          d += ` C ${f(x - s * neckW * 0.4)} ${f(mid + shoulder)}`;
+          d += ` ${f(x - s * neckW * 0.15)} ${f(mid + r)}`;
+          d += ` ${f(midX)} ${f(mid + r)}`;
+          d += ` C ${f(midX - s * r * k)} ${f(mid + r)}`;
+          d += ` ${f(tip)} ${f(mid + r * k)}`;
+          d += ` ${f(tip)} ${f(mid)}`;
+          d += ` C ${f(tip)} ${f(mid - r * k)}`;
+          d += ` ${f(midX - s * r * k)} ${f(mid - r)}`;
+          d += ` ${f(midX)} ${f(mid - r)}`;
+          d += ` C ${f(x - s * neckW * 0.15)} ${f(mid - r)}`;
+          d += ` ${f(x - s * neckW * 0.4)} ${f(mid - shoulder)}`;
           d += ` ${f(x)} ${f(mid - shoulder)}`;
         } else {
           d += ` L ${f(x)} ${f(mid + shoulder)}`;
@@ -854,43 +870,82 @@
       fitToView();
     }
 
-    /** Pack free pieces in a non-overlapping grid around the board */
-    function arrangePieces() {
+    /**
+     * Unstack: gently separate overlapping free pieces/groups.
+     * Does NOT break groups. Does NOT move placed pieces.
+     * Keeps everything near its current position.
+     */
+    function unstackPieces() {
       if (!pieces.length) return;
       winOverlay.classList.remove('show');
 
       const free = pieces.filter(p => !p.placed);
       if (!free.length) {
-        statusEl.textContent = 'All pieces are already placed.';
+        statusEl.textContent = 'Nothing to unstack — all pieces are placed.';
         return;
       }
 
+      // Unique free groups (connected bundles stay together)
+      const groups = [];
+      const seen = new Set();
       free.forEach(p => {
-        p.el.classList.remove('snapped');
-        p.group = [p];
+        if (seen.has(p.group)) return;
+        seen.add(p.group);
+        groups.push(p.group);
       });
 
-      const gap = Math.max(10, Math.min(pieceW, pieceH) * 0.12);
-      const cellW = Math.max(...free.map(p => p.w)) + gap;
-      const cellH = Math.max(...free.map(p => p.h)) + gap;
-      const margin = Math.max(pieceW, pieceH) * 0.35 + 24;
+      function groupBBox(g) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        g.forEach(p => {
+          const x = parseFloat(p.el.style.left);
+          const y = parseFloat(p.el.style.top);
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + p.w);
+          maxY = Math.max(maxY, y + p.h);
+        });
+        return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+      }
 
-      // Prefer a band to the right of the board, wrap extra rows below if needed
-      const maxRows = Math.max(1, Math.ceil(boardH / cellH));
-      const colsNeeded = Math.ceil(free.length / maxRows);
+      function moveGroup(g, dx, dy) {
+        g.forEach(p => {
+          p.el.style.left = (parseFloat(p.el.style.left) + dx) + 'px';
+          p.el.style.top = (parseFloat(p.el.style.top) + dy) + 'px';
+        });
+      }
 
-      free.forEach((p, i) => {
-        const col = Math.floor(i / maxRows);
-        const row = i % maxRows;
-        const x = boardW + margin + col * cellW;
-        const y = row * cellH;
-        p.el.style.left = x + 'px';
-        p.el.style.top = y + 'px';
-        p.el.style.zIndex = 10 + (i % 20);
-      });
+      const pad = Math.max(4, Math.min(pieceW, pieceH) * 0.08);
+      // A few relaxation passes — small pushes only
+      for (let iter = 0; iter < 14; iter++) {
+        for (let i = 0; i < groups.length; i++) {
+          for (let j = i + 1; j < groups.length; j++) {
+            const a = groupBBox(groups[i]);
+            const b = groupBBox(groups[j]);
+            if (a.maxX + pad < b.minX || b.maxX + pad < a.minX ||
+                a.maxY + pad < b.minY || b.maxY + pad < a.minY) continue;
+
+            let dx = a.cx - b.cx;
+            let dy = a.cy - b.cy;
+            let dist = Math.hypot(dx, dy);
+            if (dist < 0.5) {
+              // perfectly stacked — pick a stable direction from index
+              const ang = ((i * 17 + j * 31) % 360) * Math.PI / 180;
+              dx = Math.cos(ang);
+              dy = Math.sin(ang);
+              dist = 1;
+            } else {
+              dx /= dist;
+              dy /= dist;
+            }
+            const push = 5 + iter * 0.35;
+            moveGroup(groups[i], dx * push * 0.5, dy * push * 0.5);
+            moveGroup(groups[j], -dx * push * 0.5, -dy * push * 0.5);
+          }
+        }
+      }
 
       updateStatus();
-      fitToView();
+      // Do not fitToView — stay where the user is looking
     }
 
     function updateStatus() {
@@ -903,7 +958,7 @@
     // Buttons
     startBtn.addEventListener('click', startPuzzle);
     fitBtn.addEventListener('click', () => fitToView());
-    arrangeBtn.addEventListener('click', arrangePieces);
+    if (arrangeBtn) arrangeBtn.addEventListener('click', unstackPieces);
     resetBtn.addEventListener('click', rescatter);
     hintBtn.addEventListener('click', () => {
       hintImg.style.display = hintImg.style.display === 'none' ? 'block' : 'none';
@@ -916,13 +971,18 @@
       }
       winOverlay.classList.remove('show');
     }
-    // pointerdown + click so touch and mouse both work (viewport was stealing events)
-    closeWinBtn.addEventListener('pointerdown', dismissWin);
-    closeWinBtn.addEventListener('click', dismissWin);
-    winOverlay.addEventListener('pointerdown', (e) => {
-      // click on dark backdrop also dismisses
-      if (e.target === winOverlay) dismissWin(e);
-    });
+    if (closeWinBtn) {
+      closeWinBtn.addEventListener('pointerdown', dismissWin);
+      closeWinBtn.addEventListener('click', dismissWin);
+    }
+    if (winOverlay) {
+      winOverlay.addEventListener('pointerdown', (e) => {
+        if (e.target === winOverlay) dismissWin(e);
+      });
+    }
+
+    // Build stamp — if Arrange does nothing, this JS file is not the one live on CF
+    console.info('[Art Jigsaw] v0.2.0 · unstack+rescatter+continue+round-tabs');
 
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startPuzzle();
