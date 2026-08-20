@@ -4,6 +4,7 @@
     const statusEl = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
     const fitBtn = document.getElementById('fitBtn');
+    const arrangeBtn = document.getElementById('arrangeBtn');
     const hintBtn = document.getElementById('hintBtn');
     const resetBtn = document.getElementById('resetBtn');
     const winOverlay = document.getElementById('win-overlay');
@@ -89,6 +90,7 @@
       }
       startBtn.disabled = false;
       fitBtn.disabled = false;
+      arrangeBtn.disabled = false;
       hintBtn.disabled = false;
       resetBtn.disabled = false;
     }
@@ -115,7 +117,7 @@
       // Tab size must stay proportional — never dominate small pieces
       // Classic look is ~16–19% of the shorter side
       const minDim = Math.min(pieceW, pieceH);
-      tabSize = Math.max(3.5, Math.min(minDim * 0.175, minDim * 0.20));
+      tabSize = Math.max(4, Math.min(minDim * 0.19, minDim * 0.22));
 
       // Snap distance scales with piece size so high piece-counts stay playable
       snapThreshold = Math.max(12, Math.min(28, minDim * 0.38));
@@ -245,72 +247,79 @@
      * tabs: { top, right, bottom, left }  +1 = tab out, -1 = blank in, 0 = flat
      */
     function buildJigsawPath(x, y, w, h, tabs, t, style) {
-      // Swapped: classic = circular/bulb tabs (reference photo style)
-      //          round   = alternate ear style
-      const isRound = style === 'classic';
-      const neckW = isRound ? t * 0.28 : t * 0.42;
-      const headR = isRound ? t * 1.05 : t * 0.92;
-      const shoulder = isRound ? t * 0.55 : t * 0.78;
+      // classic = circular/bulb tabs (reference photo)
+      // round   = alternate ear style
+      const isClassic = style === 'classic';
+      // Higher-precision coords → smoother curves when zoomed
+      const f = (n) => (Math.round(n * 1000) / 1000);
+      const neckW = isClassic ? t * 0.26 : t * 0.40;
+      const headR = isClassic ? t * 1.08 : t * 0.94;
+      const shoulder = isClassic ? t * 0.52 : t * 0.76;
 
-      // Horizontal tab, going left → right. s > 0 = out upward (-y)
+      // Horizontal tab, left → right. s > 0 = out upward (-y)
+      // Uses 4 cubic segments for a smoother bulb (less "low-poly" look when zoomed)
       function tabH(cx, cy, s) {
-        if (isRound) {
-          // Near-circular bulb
+        if (isClassic) {
           return [
-            `L ${cx - shoulder} ${cy}`,
-            `C ${cx - shoulder} ${cy - s * neckW}`,
-              `${cx - headR * 0.95} ${cy - s * headR * 0.35}`,
-              `${cx - headR * 0.7} ${cy - s * headR * 0.85}`,
-            `C ${cx - headR * 0.35} ${cy - s * headR * 1.15}`,
-              `${cx + headR * 0.35} ${cy - s * headR * 1.15}`,
-              `${cx + headR * 0.7} ${cy - s * headR * 0.85}`,
-            `C ${cx + headR * 0.95} ${cy - s * headR * 0.35}`,
-              `${cx + shoulder} ${cy - s * neckW}`,
-              `${cx + shoulder} ${cy}`
+            `L ${f(cx - shoulder)} ${f(cy)}`,
+            `C ${f(cx - shoulder)} ${f(cy - s * neckW * 0.5)}`,
+              `${f(cx - headR * 0.85)} ${f(cy - s * headR * 0.2)}`,
+              `${f(cx - headR * 0.78)} ${f(cy - s * headR * 0.55)}`,
+            `C ${f(cx - headR * 0.72)} ${f(cy - s * headR * 0.88)}`,
+              `${f(cx - headR * 0.42)} ${f(cy - s * headR * 1.12)}`,
+              `${f(cx)} ${f(cy - s * headR * 1.12)}`,
+            `C ${f(cx + headR * 0.42)} ${f(cy - s * headR * 1.12)}`,
+              `${f(cx + headR * 0.72)} ${f(cy - s * headR * 0.88)}`,
+              `${f(cx + headR * 0.78)} ${f(cy - s * headR * 0.55)}`,
+            `C ${f(cx + headR * 0.85)} ${f(cy - s * headR * 0.2)}`,
+              `${f(cx + shoulder)} ${f(cy - s * neckW * 0.5)}`,
+              `${f(cx + shoulder)} ${f(cy)}`
           ].join(' ');
         }
-        // Classic ear (closer to reference photo)
         return [
-          `L ${cx - shoulder} ${cy}`,
-          `C ${cx - shoulder * 0.7} ${cy - s * t * 0.08}`,
-            `${cx - headR * 0.95} ${cy - s * headR * 0.25}`,
-            `${cx - headR * 0.65} ${cy - s * headR * 0.75}`,
-          `C ${cx - headR * 0.25} ${cy - s * headR * 1.08}`,
-            `${cx + headR * 0.25} ${cy - s * headR * 1.08}`,
-            `${cx + headR * 0.65} ${cy - s * headR * 0.75}`,
-          `C ${cx + headR * 0.95} ${cy - s * headR * 0.25}`,
-            `${cx + shoulder * 0.7} ${cy - s * t * 0.08}`,
-            `${cx + shoulder} ${cy}`
+          `L ${f(cx - shoulder)} ${f(cy)}`,
+          `C ${f(cx - shoulder * 0.65)} ${f(cy - s * t * 0.06)}`,
+            `${f(cx - headR * 0.95)} ${f(cy - s * headR * 0.22)}`,
+            `${f(cx - headR * 0.62)} ${f(cy - s * headR * 0.72)}`,
+          `C ${f(cx - headR * 0.22)} ${f(cy - s * headR * 1.1)}`,
+            `${f(cx + headR * 0.22)} ${f(cy - s * headR * 1.1)}`,
+            `${f(cx + headR * 0.62)} ${f(cy - s * headR * 0.72)}`,
+          `C ${f(cx + headR * 0.95)} ${f(cy - s * headR * 0.22)}`,
+            `${f(cx + shoulder * 0.65)} ${f(cy - s * t * 0.06)}`,
+            `${f(cx + shoulder)} ${f(cy)}`
         ].join(' ');
       }
 
-      // Vertical tab, going top → bottom. s > 0 = out right (+x)
+      // Vertical tab, top → bottom. s > 0 = out right (+x)
       function tabV(cx, cy, s) {
-        if (isRound) {
+        if (isClassic) {
           return [
-            `L ${cx} ${cy - shoulder}`,
-            `C ${cx + s * neckW} ${cy - shoulder}`,
-              `${cx + s * headR * 0.35} ${cy - headR * 0.95}`,
-              `${cx + s * headR * 0.85} ${cy - headR * 0.7}`,
-            `C ${cx + s * headR * 1.15} ${cy - headR * 0.35}`,
-              `${cx + s * headR * 1.15} ${cy + headR * 0.35}`,
-              `${cx + s * headR * 0.85} ${cy + headR * 0.7}`,
-            `C ${cx + s * headR * 0.35} ${cy + headR * 0.95}`,
-              `${cx + s * neckW} ${cy + shoulder}`,
-              `${cx} ${cy + shoulder}`
+            `L ${f(cx)} ${f(cy - shoulder)}`,
+            `C ${f(cx + s * neckW * 0.5)} ${f(cy - shoulder)}`,
+              `${f(cx + s * headR * 0.2)} ${f(cy - headR * 0.85)}`,
+              `${f(cx + s * headR * 0.55)} ${f(cy - headR * 0.78)}`,
+            `C ${f(cx + s * headR * 0.88)} ${f(cy - headR * 0.72)}`,
+              `${f(cx + s * headR * 1.12)} ${f(cy - headR * 0.42)}`,
+              `${f(cx + s * headR * 1.12)} ${f(cy)}`,
+            `C ${f(cx + s * headR * 1.12)} ${f(cy + headR * 0.42)}`,
+              `${f(cx + s * headR * 0.88)} ${f(cy + headR * 0.72)}`,
+              `${f(cx + s * headR * 0.55)} ${f(cy + headR * 0.78)}`,
+            `C ${f(cx + s * headR * 0.2)} ${f(cy + headR * 0.85)}`,
+              `${f(cx + s * neckW * 0.5)} ${f(cy + shoulder)}`,
+              `${f(cx)} ${f(cy + shoulder)}`
           ].join(' ');
         }
         return [
-          `L ${cx} ${cy - shoulder}`,
-          `C ${cx + s * t * 0.08} ${cy - shoulder * 0.7}`,
-            `${cx + s * headR * 0.25} ${cy - headR * 0.95}`,
-            `${cx + s * headR * 0.75} ${cy - headR * 0.65}`,
-          `C ${cx + s * headR * 1.08} ${cy - headR * 0.25}`,
-            `${cx + s * headR * 1.08} ${cy + headR * 0.25}`,
-            `${cx + s * headR * 0.75} ${cy + headR * 0.65}`,
-          `C ${cx + s * headR * 0.25} ${cy + headR * 0.95}`,
-            `${cx + s * t * 0.08} ${cy + shoulder * 0.7}`,
-            `${cx} ${cy + shoulder}`
+          `L ${f(cx)} ${f(cy - shoulder)}`,
+          `C ${f(cx + s * t * 0.06)} ${f(cy - shoulder * 0.65)}`,
+            `${f(cx + s * headR * 0.22)} ${f(cy - headR * 0.95)}`,
+            `${f(cx + s * headR * 0.72)} ${f(cy - headR * 0.62)}`,
+          `C ${f(cx + s * headR * 1.1)} ${f(cy - headR * 0.22)}`,
+            `${f(cx + s * headR * 1.1)} ${f(cy + headR * 0.22)}`,
+            `${f(cx + s * headR * 0.72)} ${f(cy + headR * 0.62)}`,
+          `C ${f(cx + s * headR * 0.22)} ${f(cy + headR * 0.95)}`,
+            `${f(cx + s * t * 0.06)} ${f(cy + shoulder * 0.65)}`,
+            `${f(cx)} ${f(cy + shoulder)}`
         ].join(' ');
       }
 
@@ -332,67 +341,72 @@
         d += ` L ${x + w} ${y + h}`;
       }
 
-      // BOTTOM right→left
+      // BOTTOM right→left (mirror of tabH)
       if (tabs.bottom === 0) {
         d += ` L ${x} ${y + h}`;
       } else {
         const mid = x + w / 2;
         const s = tabs.bottom;
-        // reverse of tabH
-        if (isRound) {
-          d += ` L ${mid + shoulder} ${y + h}`;
-          d += ` C ${mid + shoulder} ${y + h + s * neckW}`;
-          d += ` ${mid + headR * 0.95} ${y + h + s * headR * 0.35}`;
-          d += ` ${mid + headR * 0.7} ${y + h + s * headR * 0.85}`;
-          d += ` C ${mid + headR * 0.35} ${y + h + s * headR * 1.15}`;
-          d += ` ${mid - headR * 0.35} ${y + h + s * headR * 1.15}`;
-          d += ` ${mid - headR * 0.7} ${y + h + s * headR * 0.85}`;
-          d += ` C ${mid - headR * 0.95} ${y + h + s * headR * 0.35}`;
-          d += ` ${mid - shoulder} ${y + h + s * neckW}`;
-          d += ` ${mid - shoulder} ${y + h}`;
+        if (isClassic) {
+          d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
+          d += ` C ${f(mid + shoulder)} ${f(y + h + s * neckW * 0.5)}`;
+          d += ` ${f(mid + headR * 0.85)} ${f(y + h + s * headR * 0.2)}`;
+          d += ` ${f(mid + headR * 0.78)} ${f(y + h + s * headR * 0.55)}`;
+          d += ` C ${f(mid + headR * 0.72)} ${f(y + h + s * headR * 0.88)}`;
+          d += ` ${f(mid + headR * 0.42)} ${f(y + h + s * headR * 1.12)}`;
+          d += ` ${f(mid)} ${f(y + h + s * headR * 1.12)}`;
+          d += ` C ${f(mid - headR * 0.42)} ${f(y + h + s * headR * 1.12)}`;
+          d += ` ${f(mid - headR * 0.72)} ${f(y + h + s * headR * 0.88)}`;
+          d += ` ${f(mid - headR * 0.78)} ${f(y + h + s * headR * 0.55)}`;
+          d += ` C ${f(mid - headR * 0.85)} ${f(y + h + s * headR * 0.2)}`;
+          d += ` ${f(mid - shoulder)} ${f(y + h + s * neckW * 0.5)}`;
+          d += ` ${f(mid - shoulder)} ${f(y + h)}`;
         } else {
-          d += ` L ${mid + shoulder} ${y + h}`;
-          d += ` C ${mid + shoulder * 0.7} ${y + h + s * t * 0.08}`;
-          d += ` ${mid + headR * 0.95} ${y + h + s * headR * 0.25}`;
-          d += ` ${mid + headR * 0.65} ${y + h + s * headR * 0.75}`;
-          d += ` C ${mid + headR * 0.25} ${y + h + s * headR * 1.08}`;
-          d += ` ${mid - headR * 0.25} ${y + h + s * headR * 1.08}`;
-          d += ` ${mid - headR * 0.65} ${y + h + s * headR * 0.75}`;
-          d += ` C ${mid - headR * 0.95} ${y + h + s * headR * 0.25}`;
-          d += ` ${mid - shoulder * 0.7} ${y + h + s * t * 0.08}`;
-          d += ` ${mid - shoulder} ${y + h}`;
+          d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
+          d += ` C ${f(mid + shoulder * 0.65)} ${f(y + h + s * t * 0.06)}`;
+          d += ` ${f(mid + headR * 0.95)} ${f(y + h + s * headR * 0.22)}`;
+          d += ` ${f(mid + headR * 0.62)} ${f(y + h + s * headR * 0.72)}`;
+          d += ` C ${f(mid + headR * 0.22)} ${f(y + h + s * headR * 1.1)}`;
+          d += ` ${f(mid - headR * 0.22)} ${f(y + h + s * headR * 1.1)}`;
+          d += ` ${f(mid - headR * 0.62)} ${f(y + h + s * headR * 0.72)}`;
+          d += ` C ${f(mid - headR * 0.95)} ${f(y + h + s * headR * 0.22)}`;
+          d += ` ${f(mid - shoulder * 0.65)} ${f(y + h + s * t * 0.06)}`;
+          d += ` ${f(mid - shoulder)} ${f(y + h)}`;
         }
         d += ` L ${x} ${y + h}`;
       }
 
-      // LEFT bottom→top
+      // LEFT bottom→top (mirror of tabV)
       if (tabs.left === 0) {
         d += ` L ${x} ${y}`;
       } else {
         const mid = y + h / 2;
         const s = tabs.left;
-        if (isRound) {
-          d += ` L ${x} ${mid + shoulder}`;
-          d += ` C ${x - s * neckW} ${mid + shoulder}`;
-          d += ` ${x - s * headR * 0.35} ${mid + headR * 0.95}`;
-          d += ` ${x - s * headR * 0.85} ${mid + headR * 0.7}`;
-          d += ` C ${x - s * headR * 1.15} ${mid + headR * 0.35}`;
-          d += ` ${x - s * headR * 1.15} ${mid - headR * 0.35}`;
-          d += ` ${x - s * headR * 0.85} ${mid - headR * 0.7}`;
-          d += ` C ${x - s * headR * 0.35} ${mid - headR * 0.95}`;
-          d += ` ${x - s * neckW} ${mid - shoulder}`;
-          d += ` ${x} ${mid - shoulder}`;
+        if (isClassic) {
+          d += ` L ${f(x)} ${f(mid + shoulder)}`;
+          d += ` C ${f(x - s * neckW * 0.5)} ${f(mid + shoulder)}`;
+          d += ` ${f(x - s * headR * 0.2)} ${f(mid + headR * 0.85)}`;
+          d += ` ${f(x - s * headR * 0.55)} ${f(mid + headR * 0.78)}`;
+          d += ` C ${f(x - s * headR * 0.88)} ${f(mid + headR * 0.72)}`;
+          d += ` ${f(x - s * headR * 1.12)} ${f(mid + headR * 0.42)}`;
+          d += ` ${f(x - s * headR * 1.12)} ${f(mid)}`;
+          d += ` C ${f(x - s * headR * 1.12)} ${f(mid - headR * 0.42)}`;
+          d += ` ${f(x - s * headR * 0.88)} ${f(mid - headR * 0.72)}`;
+          d += ` ${f(x - s * headR * 0.55)} ${f(mid - headR * 0.78)}`;
+          d += ` C ${f(x - s * headR * 0.2)} ${f(mid - headR * 0.85)}`;
+          d += ` ${f(x - s * neckW * 0.5)} ${f(mid - shoulder)}`;
+          d += ` ${f(x)} ${f(mid - shoulder)}`;
         } else {
-          d += ` L ${x} ${mid + shoulder}`;
-          d += ` C ${x - s * t * 0.08} ${mid + shoulder * 0.7}`;
-          d += ` ${x - s * headR * 0.25} ${mid + headR * 0.95}`;
-          d += ` ${x - s * headR * 0.75} ${mid + headR * 0.65}`;
-          d += ` C ${x - s * headR * 1.08} ${mid + headR * 0.25}`;
-          d += ` ${x - s * headR * 1.08} ${mid - headR * 0.25}`;
-          d += ` ${x - s * headR * 0.75} ${mid - headR * 0.65}`;
-          d += ` C ${x - s * headR * 0.25} ${mid - headR * 0.95}`;
-          d += ` ${x - s * t * 0.08} ${mid - shoulder * 0.7}`;
-          d += ` ${x} ${mid - shoulder}`;
+          d += ` L ${f(x)} ${f(mid + shoulder)}`;
+          d += ` C ${f(x - s * t * 0.06)} ${f(mid + shoulder * 0.65)}`;
+          d += ` ${f(x - s * headR * 0.22)} ${f(mid + headR * 0.95)}`;
+          d += ` ${f(x - s * headR * 0.72)} ${f(mid + headR * 0.62)}`;
+          d += ` C ${f(x - s * headR * 1.1)} ${f(mid + headR * 0.22)}`;
+          d += ` ${f(x - s * headR * 1.1)} ${f(mid - headR * 0.22)}`;
+          d += ` ${f(x - s * headR * 0.72)} ${f(mid - headR * 0.62)}`;
+          d += ` C ${f(x - s * headR * 0.22)} ${f(mid - headR * 0.95)}`;
+          d += ` ${f(x - s * t * 0.06)} ${f(mid - shoulder * 0.65)}`;
+          d += ` ${f(x)} ${f(mid - shoulder)}`;
         }
         d += ` L ${x} ${y}`;
       }
@@ -807,12 +821,13 @@
       if (!pieces.length) return;
       winOverlay.classList.remove('show');
 
+      // Only free (not yet locked) pieces — placed ones stay on the board
       pieces.forEach(p => {
-        p.placed = false;
-        p.el.classList.remove('snapped');
-        p.group = [p];               // break all groups
+        if (p.placed) return;
 
-        // Place clearly outside the board
+        p.el.classList.remove('snapped');
+        p.group = [p];
+
         const margin = Math.max(pieceW, pieceH) * 0.6 + 30;
         const side = Math.floor(Math.random() * 4);
         let x, y;
@@ -839,6 +854,45 @@
       fitToView();
     }
 
+    /** Pack free pieces in a non-overlapping grid around the board */
+    function arrangePieces() {
+      if (!pieces.length) return;
+      winOverlay.classList.remove('show');
+
+      const free = pieces.filter(p => !p.placed);
+      if (!free.length) {
+        statusEl.textContent = 'All pieces are already placed.';
+        return;
+      }
+
+      free.forEach(p => {
+        p.el.classList.remove('snapped');
+        p.group = [p];
+      });
+
+      const gap = Math.max(10, Math.min(pieceW, pieceH) * 0.12);
+      const cellW = Math.max(...free.map(p => p.w)) + gap;
+      const cellH = Math.max(...free.map(p => p.h)) + gap;
+      const margin = Math.max(pieceW, pieceH) * 0.35 + 24;
+
+      // Prefer a band to the right of the board, wrap extra rows below if needed
+      const maxRows = Math.max(1, Math.ceil(boardH / cellH));
+      const colsNeeded = Math.ceil(free.length / maxRows);
+
+      free.forEach((p, i) => {
+        const col = Math.floor(i / maxRows);
+        const row = i % maxRows;
+        const x = boardW + margin + col * cellW;
+        const y = row * cellH;
+        p.el.style.left = x + 'px';
+        p.el.style.top = y + 'px';
+        p.el.style.zIndex = 10 + (i % 20);
+      });
+
+      updateStatus();
+      fitToView();
+    }
+
     function updateStatus() {
       if (!pieces.length) return;
       const placed = pieces.filter(p => p.placed).length;
@@ -849,13 +903,25 @@
     // Buttons
     startBtn.addEventListener('click', startPuzzle);
     fitBtn.addEventListener('click', () => fitToView());
+    arrangeBtn.addEventListener('click', arrangePieces);
     resetBtn.addEventListener('click', rescatter);
     hintBtn.addEventListener('click', () => {
       hintImg.style.display = hintImg.style.display === 'none' ? 'block' : 'none';
     });
-    closeWinBtn.addEventListener('click', () => {
+
+    function dismissWin(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       winOverlay.classList.remove('show');
-      // Do NOT rescatter — let the player enjoy the finished image
+    }
+    // pointerdown + click so touch and mouse both work (viewport was stealing events)
+    closeWinBtn.addEventListener('pointerdown', dismissWin);
+    closeWinBtn.addEventListener('click', dismissWin);
+    winOverlay.addEventListener('pointerdown', (e) => {
+      // click on dark backdrop also dismisses
+      if (e.target === winOverlay) dismissWin(e);
     });
 
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
