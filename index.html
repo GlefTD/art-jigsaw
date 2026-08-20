@@ -20,45 +20,49 @@
     </button>
   </div>
   <div class="controls open" id="controlsPanel">
-    <label>
-      Image URL
-      <input type="url" id="imageUrl" placeholder="https://... .jpg / .png">
-    </label>
-    <label>
-      or File
-      <input type="file" id="imageFile" accept="image/jpeg,image/png,image/webp">
-    </label>
-    <label>
-      Pieces
-      <select id="gridSize">
-        <option value="3">3 × 3 (9)</option>
-        <option value="4" selected>4 × 4 (16)</option>
-        <option value="5">5 × 5 (25)</option>
-        <option value="6">6 × 6 (36)</option>
-        <option value="7">7 × 7 (49)</option>
-        <option value="8">8 × 8 (64)</option>
-        <option value="10">10 × 10 (100)</option>
-        <option value="12">12 × 12 (144)</option>
-        <option value="16">16 × 16 (256)</option>
-        <option value="20">20 × 20 (400)</option>
-        <option value="24">24 × 24 (576)</option>
-        <option value="28">28 × 28 (784)</option>
-        <option value="32">32 × 32 (1024)</option>
-      </select>
-    </label>
-    <label>
-      Shape
-      <select id="pieceShape">
-        <option value="classic" selected>Classic (traditional tabs)</option>
-        <option value="round">Round tabs</option>
-        <option value="square">Square</option>
-      </select>
-    </label>
-    <button id="startBtn">Start Puzzle</button>
-    <button id="fitBtn" class="secondary" disabled>Fit to View</button>
-    <button id="arrangeBtn" class="secondary" disabled title="Slightly separate overlapping free pieces without breaking groups">Unstack</button>
-    <button id="hintBtn" class="secondary" disabled>Hint</button>
-    <button id="resetBtn" class="secondary" disabled>Rescatter</button>
+    <div class="controls-row">
+      <label>
+        Image URL
+        <input type="url" id="imageUrl" placeholder="https://... .jpg / .png">
+      </label>
+      <label>
+        or File
+        <input type="file" id="imageFile" accept="image/jpeg,image/png,image/webp">
+      </label>
+      <label>
+        Pieces
+        <select id="gridSize">
+          <option value="3">3 × 3 (9)</option>
+          <option value="4" selected>4 × 4 (16)</option>
+          <option value="5">5 × 5 (25)</option>
+          <option value="6">6 × 6 (36)</option>
+          <option value="7">7 × 7 (49)</option>
+          <option value="8">8 × 8 (64)</option>
+          <option value="10">10 × 10 (100)</option>
+          <option value="12">12 × 12 (144)</option>
+          <option value="16">16 × 16 (256)</option>
+          <option value="20">20 × 20 (400)</option>
+          <option value="24">24 × 24 (576)</option>
+          <option value="28">28 × 28 (784)</option>
+          <option value="32">32 × 32 (1024)</option>
+        </select>
+      </label>
+      <label>
+        Shape
+        <select id="pieceShape">
+          <option value="classic" selected>Classic</option>
+          <option value="round">Round tabs</option>
+          <option value="square">Square</option>
+        </select>
+      </label>
+    </div>
+    <div class="controls-row controls-actions">
+      <button id="startBtn">Start Puzzle</button>
+      <button id="fitBtn" class="secondary" disabled>Fit to View</button>
+      <button id="arrangeBtn" class="secondary" disabled title="Slightly separate overlapping free pieces without breaking groups">Unstack</button>
+      <button id="hintBtn" class="secondary" disabled>Hint</button>
+      <button id="resetBtn" class="secondary" disabled>Rescatter</button>
+    </div>
   </div>
   <div id="status">Load an image then Start. Desktop: scroll zoom · middle-click pan. Touch: drag pieces · 1-finger pan · pinch zoom.</div>
   <div id="viewport">
@@ -67,7 +71,7 @@
     </div>
     <img id="hint-img" alt="hint">
     <div class="zoom-info" id="zoomInfo">100%</div>
-    <div class="version-tag" id="versionTag">v0.2.0</div>
+    <div class="version-tag" id="versionTag">v0.2.1</div>
   </div>
   <!-- Outside #viewport so pan/touch never steals the Continue click -->
   <div id="win-overlay">

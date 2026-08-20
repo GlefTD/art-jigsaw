@@ -246,185 +246,248 @@
      *        'round'   = more circular / bulbous tabs
      * tabs: { top, right, bottom, left }  +1 = tab out, -1 = blank in, 0 = flat
      */
+    /**
+     * Classic interlocking path — geometry adapted from JClic ClassicJigSaw
+     * (proven toy-puzzle tooth: 3 cubic beziers per tab).
+     * No dependencies.
+     * tabs: +1 out, -1 blank, 0 flat
+     */
     function buildJigsawPath(x, y, w, h, tabs, t, style) {
-      // classic = circular/bulb tabs (reference photo)
-      // round   = alternate ear style
-      const isClassic = style === 'classic';
-      // Higher-precision coords → smoother curves when zoomed
-      const f = (n) => (Math.round(n * 1000) / 1000);
-      const neckW = isClassic ? t * 0.26 : t * 0.40;
-      const headR = isClassic ? t * 1.08 : t * 0.94;
-      const shoulder = isClassic ? t * 0.52 : t * 0.76;
+      const f = (n) => Math.round(n * 1000) / 1000;
 
-      // Horizontal tab, left → right. s > 0 = out upward (-y)
-      // Classic: near-circular bulb (kappa 0.5523)
-      function tabH(cx, cy, s) {
-        if (isClassic) {
-          const k = 0.5523;
-          const r = headR * 0.95;
-          const tip = cy - s * (neckW * 0.35 + r * 2 * 0.92);
-          const midY = cy - s * (neckW * 0.35 + r * 0.92);
-          return [
-            `L ${f(cx - shoulder)} ${f(cy)}`,
-            `C ${f(cx - shoulder)} ${f(cy - s * neckW * 0.4)}`,
-              `${f(cx - r)} ${f(cy - s * neckW * 0.15)}`,
-              `${f(cx - r)} ${f(midY)}`,
-            `C ${f(cx - r)} ${f(midY - s * r * k)}`,
-              `${f(cx - r * k)} ${f(tip)}`,
-              `${f(cx)} ${f(tip)}`,
-            `C ${f(cx + r * k)} ${f(tip)}`,
-              `${f(cx + r)} ${f(midY - s * r * k)}`,
-              `${f(cx + r)} ${f(midY)}`,
-            `C ${f(cx + r)} ${f(cy - s * neckW * 0.15)}`,
-              `${f(cx + shoulder)} ${f(cy - s * neckW * 0.4)}`,
-              `${f(cx + shoulder)} ${f(cy)}`
-          ].join(' ');
-        }
+      // Classic toy-puzzle tooth — JClic ClassicJigSaw geometry (3 cubics)
+      function tabClassicH(x1, y1, x2, y2, outward) {
+        // from (x1,y1) to (x2,y2) along horizontal top or bottom
+        // outward: -1 = up (top edge tab out), +1 = down
+        const L = x2 - x1;
+        const baseW = Math.min(Math.abs(L) * 0.40, t * 2.4);
+        const mid = (x1 + x2) / 2;
+        const x0 = mid - baseW / 2;
+        const u = baseW / 12;
+        const th = t * 0.92; // tooth height
+        const o = outward; // +1 down, -1 up
+        // JClic: hb = h * toothHeightFactor / 8, with 5*hb ≈ tip
+        // Map: tip at ~th, so unitH = th/5
+        const uh = th / 5;
+        return [
+          `L ${f(x0)} ${f(y1)}`,
+          `C ${f(x0 + 4 * u)} ${f(y1)}`,
+            `${f(x0 + 6 * u)} ${f(y1 + o * uh)}`,
+            `${f(x0 + 4 * u)} ${f(y1 + o * 3 * uh)}`,
+          `C ${f(x0 + 2 * u)} ${f(y1 + o * 5 * uh)}`,
+            `${f(x0 + 10 * u)} ${f(y1 + o * 5 * uh)}`,
+            `${f(x0 + 8 * u)} ${f(y1 + o * 3 * uh)}`,
+          `C ${f(x0 + 6 * u)} ${f(y1 + o * 1 * uh)}`,
+            `${f(x0 + 8 * u)} ${f(y1)}`,
+            `${f(x0 + 12 * u)} ${f(y1)}`
+        ].join(' ');
+      }
+
+      function tabClassicV(x1, y1, x2, y2, outward) {
+        // vertical edge top→bottom. outward: +1 right, -1 left
+        const L = y2 - y1;
+        const baseW = Math.min(Math.abs(L) * 0.40, t * 2.4);
+        const mid = (y1 + y2) / 2;
+        const y0 = mid - baseW / 2;
+        const u = baseW / 12;
+        const th = t * 0.92;
+        const o = outward;
+        const uh = th / 5;
+        return [
+          `L ${f(x1)} ${f(y0)}`,
+          `C ${f(x1)} ${f(y0 + 4 * u)}`,
+            `${f(x1 + o * uh)} ${f(y0 + 6 * u)}`,
+            `${f(x1 + o * 3 * uh)} ${f(y0 + 4 * u)}`,
+          `C ${f(x1 + o * 5 * uh)} ${f(y0 + 2 * u)}`,
+            `${f(x1 + o * 5 * uh)} ${f(y0 + 10 * u)}`,
+            `${f(x1 + o * 3 * uh)} ${f(y0 + 8 * u)}`,
+          `C ${f(x1 + o * 1 * uh)} ${f(y0 + 6 * u)}`,
+            `${f(x1)} ${f(y0 + 8 * u)}`,
+            `${f(x1)} ${f(y0 + 12 * u)}`
+        ].join(' ');
+      }
+
+      // Round style: more circular bulb
+      function tabRoundH(cx, cy, outward) {
+        const k = 0.5523;
+        const r = t * 0.88;
+        const neck = t * 0.28;
+        const shoulder = t * 0.55;
+        const o = outward;
+        const tip = cy + o * (neck * 0.3 + r * 1.85);
+        const midY = cy + o * (neck * 0.3 + r);
         return [
           `L ${f(cx - shoulder)} ${f(cy)}`,
-          `C ${f(cx - shoulder * 0.65)} ${f(cy - s * t * 0.06)}`,
-            `${f(cx - headR * 0.95)} ${f(cy - s * headR * 0.22)}`,
-            `${f(cx - headR * 0.62)} ${f(cy - s * headR * 0.72)}`,
-          `C ${f(cx - headR * 0.22)} ${f(cy - s * headR * 1.1)}`,
-            `${f(cx + headR * 0.22)} ${f(cy - s * headR * 1.1)}`,
-            `${f(cx + headR * 0.62)} ${f(cy - s * headR * 0.72)}`,
-          `C ${f(cx + headR * 0.95)} ${f(cy - s * headR * 0.22)}`,
-            `${f(cx + shoulder * 0.65)} ${f(cy - s * t * 0.06)}`,
+          `C ${f(cx - shoulder)} ${f(cy + o * neck * 0.35)}`,
+            `${f(cx - r)} ${f(cy + o * neck * 0.1)}`,
+            `${f(cx - r)} ${f(midY)}`,
+          `C ${f(cx - r)} ${f(midY + o * r * k)}`,
+            `${f(cx - r * k)} ${f(tip)}`,
+            `${f(cx)} ${f(tip)}`,
+          `C ${f(cx + r * k)} ${f(tip)}`,
+            `${f(cx + r)} ${f(midY + o * r * k)}`,
+            `${f(cx + r)} ${f(midY)}`,
+          `C ${f(cx + r)} ${f(cy + o * neck * 0.1)}`,
+            `${f(cx + shoulder)} ${f(cy + o * neck * 0.35)}`,
             `${f(cx + shoulder)} ${f(cy)}`
         ].join(' ');
       }
 
-      // Vertical tab, top → bottom. s > 0 = out right (+x)
-      function tabV(cx, cy, s) {
-        if (isClassic) {
-          const k = 0.5523;
-          const r = headR * 0.95;
-          const tip = cx + s * (neckW * 0.35 + r * 2 * 0.92);
-          const midX = cx + s * (neckW * 0.35 + r * 0.92);
-          return [
-            `L ${f(cx)} ${f(cy - shoulder)}`,
-            `C ${f(cx + s * neckW * 0.4)} ${f(cy - shoulder)}`,
-              `${f(cx + s * neckW * 0.15)} ${f(cy - r)}`,
-              `${f(midX)} ${f(cy - r)}`,
-            `C ${f(midX + s * r * k)} ${f(cy - r)}`,
-              `${f(tip)} ${f(cy - r * k)}`,
-              `${f(tip)} ${f(cy)}`,
-            `C ${f(tip)} ${f(cy + r * k)}`,
-              `${f(midX + s * r * k)} ${f(cy + r)}`,
-              `${f(midX)} ${f(cy + r)}`,
-            `C ${f(cx + s * neckW * 0.15)} ${f(cy + r)}`,
-              `${f(cx + s * neckW * 0.4)} ${f(cy + shoulder)}`,
-              `${f(cx)} ${f(cy + shoulder)}`
-          ].join(' ');
-        }
+      function tabRoundV(cx, cy, outward) {
+        const k = 0.5523;
+        const r = t * 0.88;
+        const neck = t * 0.28;
+        const shoulder = t * 0.55;
+        const o = outward;
+        const tip = cx + o * (neck * 0.3 + r * 1.85);
+        const midX = cx + o * (neck * 0.3 + r);
         return [
           `L ${f(cx)} ${f(cy - shoulder)}`,
-          `C ${f(cx + s * t * 0.06)} ${f(cy - shoulder * 0.65)}`,
-            `${f(cx + s * headR * 0.22)} ${f(cy - headR * 0.95)}`,
-            `${f(cx + s * headR * 0.72)} ${f(cy - headR * 0.62)}`,
-          `C ${f(cx + s * headR * 1.1)} ${f(cy - headR * 0.22)}`,
-            `${f(cx + s * headR * 1.1)} ${f(cy + headR * 0.22)}`,
-            `${f(cx + s * headR * 0.72)} ${f(cy + headR * 0.62)}`,
-          `C ${f(cx + s * headR * 0.22)} ${f(cy + headR * 0.95)}`,
-            `${f(cx + s * t * 0.06)} ${f(cy + shoulder * 0.65)}`,
+          `C ${f(cx + o * neck * 0.35)} ${f(cy - shoulder)}`,
+            `${f(cx + o * neck * 0.1)} ${f(cy - r)}`,
+            `${f(midX)} ${f(cy - r)}`,
+          `C ${f(midX + o * r * k)} ${f(cy - r)}`,
+            `${f(tip)} ${f(cy - r * k)}`,
+            `${f(tip)} ${f(cy)}`,
+          `C ${f(tip)} ${f(cy + r * k)}`,
+            `${f(midX + o * r * k)} ${f(cy + r)}`,
+            `${f(midX)} ${f(cy + r)}`,
+          `C ${f(cx + o * neck * 0.1)} ${f(cy + r)}`,
+            `${f(cx + o * neck * 0.35)} ${f(cy + shoulder)}`,
             `${f(cx)} ${f(cy + shoulder)}`
         ].join(' ');
       }
 
-      let d = `M ${x} ${y}`;
+      let d = `M ${f(x)} ${f(y)}`;
 
-      // TOP left→right
+      // TOP left → right
       if (tabs.top === 0) {
-        d += ` L ${x + w} ${y}`;
+        d += ` L ${f(x + w)} ${f(y)}`;
       } else {
-        d += ' ' + tabH(x + w / 2, y, tabs.top);
-        d += ` L ${x + w} ${y}`;
+        const out = tabs.top > 0 ? -1 : 1; // +1 tab out on top means outward is up = -y
+        // Wait: tabs.top +1 means tab OUT (protrudes up). outward for tabClassicH: -1 = up
+        const outward = tabs.top > 0 ? -1 : 1;
+        if (style === 'round') {
+          d += ' ' + tabRoundH(x + w / 2, y, outward);
+        } else {
+          d += ' ' + tabClassicH(x, y, x + w, y, outward);
+        }
+        d += ` L ${f(x + w)} ${f(y)}`;
       }
 
-      // RIGHT top→bottom
+      // RIGHT top → bottom
       if (tabs.right === 0) {
-        d += ` L ${x + w} ${y + h}`;
+        d += ` L ${f(x + w)} ${f(y + h)}`;
       } else {
-        d += ' ' + tabV(x + w, y + h / 2, tabs.right);
-        d += ` L ${x + w} ${y + h}`;
+        const outward = tabs.right > 0 ? 1 : -1; // +1 out = right
+        if (style === 'round') {
+          d += ' ' + tabRoundV(x + w, y + h / 2, outward);
+        } else {
+          d += ' ' + tabClassicV(x + w, y, x + w, y + h, outward);
+        }
+        d += ` L ${f(x + w)} ${f(y + h)}`;
       }
 
-      // BOTTOM right→left (mirror of tabH)
+      // BOTTOM right → left
       if (tabs.bottom === 0) {
-        d += ` L ${x} ${y + h}`;
+        d += ` L ${f(x)} ${f(y + h)}`;
       } else {
-        const mid = x + w / 2;
-        const s = tabs.bottom;
-        if (isClassic) {
+        const outward = tabs.bottom > 0 ? 1 : -1; // +1 out = down
+        if (style === 'round') {
+          // reverse: need right-to-left — tabRoundH is left-to-right, so flip by using negative traversal
+          // Build left-to-right then we'll approach from right via L first... 
+          // Actually path goes right to left on bottom. Generate points in reverse order.
+          const mid = x + w / 2;
           const k = 0.5523;
-          const r = headR * 0.95;
-          const tip = y + h + s * (neckW * 0.35 + r * 2 * 0.92);
-          const midY = y + h + s * (neckW * 0.35 + r * 0.92);
+          const r = t * 0.88;
+          const neck = t * 0.28;
+          const shoulder = t * 0.55;
+          const o = outward;
+          const tip = y + h + o * (neck * 0.3 + r * 1.85);
+          const midY = y + h + o * (neck * 0.3 + r);
           d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
-          d += ` C ${f(mid + shoulder)} ${f(y + h + s * neckW * 0.4)}`;
-          d += ` ${f(mid + r)} ${f(y + h + s * neckW * 0.15)}`;
+          d += ` C ${f(mid + shoulder)} ${f(y + h + o * neck * 0.35)}`;
+          d += ` ${f(mid + r)} ${f(y + h + o * neck * 0.1)}`;
           d += ` ${f(mid + r)} ${f(midY)}`;
-          d += ` C ${f(mid + r)} ${f(midY + s * r * k)}`;
+          d += ` C ${f(mid + r)} ${f(midY + o * r * k)}`;
           d += ` ${f(mid + r * k)} ${f(tip)}`;
           d += ` ${f(mid)} ${f(tip)}`;
           d += ` C ${f(mid - r * k)} ${f(tip)}`;
-          d += ` ${f(mid - r)} ${f(midY + s * r * k)}`;
+          d += ` ${f(mid - r)} ${f(midY + o * r * k)}`;
           d += ` ${f(mid - r)} ${f(midY)}`;
-          d += ` C ${f(mid - r)} ${f(y + h + s * neckW * 0.15)}`;
-          d += ` ${f(mid - shoulder)} ${f(y + h + s * neckW * 0.4)}`;
+          d += ` C ${f(mid - r)} ${f(y + h + o * neck * 0.1)}`;
+          d += ` ${f(mid - shoulder)} ${f(y + h + o * neck * 0.35)}`;
           d += ` ${f(mid - shoulder)} ${f(y + h)}`;
         } else {
-          d += ` L ${f(mid + shoulder)} ${f(y + h)}`;
-          d += ` C ${f(mid + shoulder * 0.65)} ${f(y + h + s * t * 0.06)}`;
-          d += ` ${f(mid + headR * 0.95)} ${f(y + h + s * headR * 0.22)}`;
-          d += ` ${f(mid + headR * 0.62)} ${f(y + h + s * headR * 0.72)}`;
-          d += ` C ${f(mid + headR * 0.22)} ${f(y + h + s * headR * 1.1)}`;
-          d += ` ${f(mid - headR * 0.22)} ${f(y + h + s * headR * 1.1)}`;
-          d += ` ${f(mid - headR * 0.62)} ${f(y + h + s * headR * 0.72)}`;
-          d += ` C ${f(mid - headR * 0.95)} ${f(y + h + s * headR * 0.22)}`;
-          d += ` ${f(mid - shoulder * 0.65)} ${f(y + h + s * t * 0.06)}`;
-          d += ` ${f(mid - shoulder)} ${f(y + h)}`;
+          // classic bottom, right→left: mirror of tabClassicH
+          const baseW = Math.min(w * 0.40, t * 2.4);
+          const mid = x + w / 2;
+          const x0 = mid + baseW / 2; // start from right of tooth
+          const u = baseW / 12;
+          const th = t * 0.92;
+          const o = outward;
+          const uh = th / 5;
+          d += ` L ${f(x0)} ${f(y + h)}`;
+          d += ` C ${f(x0 - 4 * u)} ${f(y + h)}`;
+          d += ` ${f(x0 - 6 * u)} ${f(y + h + o * uh)}`;
+          d += ` ${f(x0 - 4 * u)} ${f(y + h + o * 3 * uh)}`;
+          d += ` C ${f(x0 - 2 * u)} ${f(y + h + o * 5 * uh)}`;
+          d += ` ${f(x0 - 10 * u)} ${f(y + h + o * 5 * uh)}`;
+          d += ` ${f(x0 - 8 * u)} ${f(y + h + o * 3 * uh)}`;
+          d += ` C ${f(x0 - 6 * u)} ${f(y + h + o * 1 * uh)}`;
+          d += ` ${f(x0 - 8 * u)} ${f(y + h)}`;
+          d += ` ${f(x0 - 12 * u)} ${f(y + h)}`;
         }
-        d += ` L ${x} ${y + h}`;
+        d += ` L ${f(x)} ${f(y + h)}`;
       }
 
-      // LEFT bottom→top (mirror of tabV)
+      // LEFT bottom → top
       if (tabs.left === 0) {
-        d += ` L ${x} ${y}`;
+        d += ` L ${f(x)} ${f(y)}`;
       } else {
-        const mid = y + h / 2;
-        const s = tabs.left;
-        if (isClassic) {
+        const outward = tabs.left > 0 ? -1 : 1; // +1 out = left
+        if (style === 'round') {
+          const mid = y + h / 2;
           const k = 0.5523;
-          const r = headR * 0.95;
-          const tip = x - s * (neckW * 0.35 + r * 2 * 0.92);
-          const midX = x - s * (neckW * 0.35 + r * 0.92);
+          const r = t * 0.88;
+          const neck = t * 0.28;
+          const shoulder = t * 0.55;
+          const o = outward;
+          const tip = x + o * (neck * 0.3 + r * 1.85);
+          const midX = x + o * (neck * 0.3 + r);
           d += ` L ${f(x)} ${f(mid + shoulder)}`;
-          d += ` C ${f(x - s * neckW * 0.4)} ${f(mid + shoulder)}`;
-          d += ` ${f(x - s * neckW * 0.15)} ${f(mid + r)}`;
+          d += ` C ${f(x + o * neck * 0.35)} ${f(mid + shoulder)}`;
+          d += ` ${f(x + o * neck * 0.1)} ${f(mid + r)}`;
           d += ` ${f(midX)} ${f(mid + r)}`;
-          d += ` C ${f(midX - s * r * k)} ${f(mid + r)}`;
+          d += ` C ${f(midX + o * r * k)} ${f(mid + r)}`;
           d += ` ${f(tip)} ${f(mid + r * k)}`;
           d += ` ${f(tip)} ${f(mid)}`;
           d += ` C ${f(tip)} ${f(mid - r * k)}`;
-          d += ` ${f(midX - s * r * k)} ${f(mid - r)}`;
+          d += ` ${f(midX + o * r * k)} ${f(mid - r)}`;
           d += ` ${f(midX)} ${f(mid - r)}`;
-          d += ` C ${f(x - s * neckW * 0.15)} ${f(mid - r)}`;
-          d += ` ${f(x - s * neckW * 0.4)} ${f(mid - shoulder)}`;
+          d += ` C ${f(x + o * neck * 0.1)} ${f(mid - r)}`;
+          d += ` ${f(x + o * neck * 0.35)} ${f(mid - shoulder)}`;
           d += ` ${f(x)} ${f(mid - shoulder)}`;
         } else {
-          d += ` L ${f(x)} ${f(mid + shoulder)}`;
-          d += ` C ${f(x - s * t * 0.06)} ${f(mid + shoulder * 0.65)}`;
-          d += ` ${f(x - s * headR * 0.22)} ${f(mid + headR * 0.95)}`;
-          d += ` ${f(x - s * headR * 0.72)} ${f(mid + headR * 0.62)}`;
-          d += ` C ${f(x - s * headR * 1.1)} ${f(mid + headR * 0.22)}`;
-          d += ` ${f(x - s * headR * 1.1)} ${f(mid - headR * 0.22)}`;
-          d += ` ${f(x - s * headR * 0.72)} ${f(mid - headR * 0.62)}`;
-          d += ` C ${f(x - s * headR * 0.22)} ${f(mid - headR * 0.95)}`;
-          d += ` ${f(x - s * t * 0.06)} ${f(mid - shoulder * 0.65)}`;
-          d += ` ${f(x)} ${f(mid - shoulder)}`;
+          const baseW = Math.min(h * 0.40, t * 2.4);
+          const mid = y + h / 2;
+          const y0 = mid + baseW / 2; // start from bottom of tooth (going up)
+          const u = baseW / 12;
+          const th = t * 0.92;
+          const o = outward;
+          const uh = th / 5;
+          d += ` L ${f(x)} ${f(y0)}`;
+          d += ` C ${f(x)} ${f(y0 - 4 * u)}`;
+          d += ` ${f(x + o * uh)} ${f(y0 - 6 * u)}`;
+          d += ` ${f(x + o * 3 * uh)} ${f(y0 - 4 * u)}`;
+          d += ` C ${f(x + o * 5 * uh)} ${f(y0 - 2 * u)}`;
+          d += ` ${f(x + o * 5 * uh)} ${f(y0 - 10 * u)}`;
+          d += ` ${f(x + o * 3 * uh)} ${f(y0 - 8 * u)}`;
+          d += ` C ${f(x + o * 1 * uh)} ${f(y0 - 6 * u)}`;
+          d += ` ${f(x)} ${f(y0 - 8 * u)}`;
+          d += ` ${f(x)} ${f(y0 - 12 * u)}`;
         }
-        d += ` L ${x} ${y}`;
+        d += ` L ${f(x)} ${f(y)}`;
       }
 
       d += ' Z';
@@ -982,7 +1045,7 @@
     }
 
     // Build stamp — if Arrange does nothing, this JS file is not the one live on CF
-    console.info('[Art Jigsaw] v0.2.0 · unstack+rescatter+continue+round-tabs');
+    console.info('[Art Jigsaw] v0.2.1 · classic-jclic-tabs · unstack · button-row');
 
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startPuzzle();
