@@ -226,7 +226,7 @@
       position: absolute;
       inset: 0;
       background: rgba(0,0,0,0.78);
-      z-index: 500;
+      z-index: 2000;
       align-items: center;
       justify-content: center;
       flex-direction: column;
@@ -239,6 +239,19 @@
       font-size: clamp(1.5rem, 3vw, 1.9rem);
       color: var(--accent);
       font-weight: 400;
+    }
+    #win-overlay p {
+      color: var(--text);
+      opacity: 0.9;
+    }
+    #win-overlay button,
+    #closeWin {
+      pointer-events: auto !important;
+      position: relative;
+      z-index: 10;
+      cursor: pointer;
+      min-width: 140px;
+      min-height: 44px;
     }
     #hint-img {
       display: none;
