@@ -3,7 +3,7 @@
  * Autosave + Cheat mode
  */
 window.JIGSAW_DEFAULTS = {
-  version: '0.4.1',
+  version: '0.4.3',
 
   tabScale: 2,
   tabBaseFactor: 0.55,

@@ -63,7 +63,7 @@
       }
 
       const vt = document.getElementById('versionTag');
-      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.1');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.3');
     }
     applyThemeFromConfig();
 
@@ -102,8 +102,10 @@
     const zoomInfo = document.getElementById('zoomInfo');
 
     let img = null;
-    let sessionImgDataUrl = null; // data URL or remote URL for autosave
+    let sessionImgBlob = null;      // Blob for IDB (never data-URL × N pieces)
+    let sessionImgObjectUrl = null; // single object URL shared by all pieces
     let sessionImgIsRemote = false;
+    let sessionImgRemoteUrl = null;
     let cols = 4, rows = 4;
     let pieceW = 0, pieceH = 0;
     let boardW = 0, boardH = 0;
@@ -192,6 +194,74 @@
       throw new Error('Could not load image URL (CORS). Use File upload, or host the image on a CORS-friendly CDN.');
     }
 
+
+    function revokePuzzleObjectUrl() {
+      if (sessionImgObjectUrl && sessionImgObjectUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(sessionImgObjectUrl); } catch (_) {}
+      }
+      sessionImgObjectUrl = null;
+    }
+
+    /** One shared background for all pieces — avoids N copies of a multi-MB data URL in the DOM. */
+    /** Returns a short URL (blob: or http:) shared by every piece. Never a multi-MB data-URL. */
+    function setSharedPuzzleImage(imageOrUrl) {
+      // Keep existing object URL if still valid and no new blob
+      let url = '';
+      if (sessionImgBlob) {
+        // Reuse one object URL for the session blob
+        if (!sessionImgObjectUrl || !sessionImgObjectUrl.startsWith('blob:')) {
+          revokePuzzleObjectUrl();
+          sessionImgObjectUrl = URL.createObjectURL(sessionImgBlob);
+        }
+        url = sessionImgObjectUrl;
+      } else if (typeof imageOrUrl === 'string' && imageOrUrl && !imageOrUrl.startsWith('data:')) {
+        url = imageOrUrl;
+        sessionImgObjectUrl = url;
+      } else if (imageOrUrl && imageOrUrl.src && !String(imageOrUrl.src).startsWith('data:')) {
+        url = imageOrUrl.src;
+        sessionImgObjectUrl = url;
+      } else if (imageOrUrl && imageOrUrl.src && String(imageOrUrl.src).startsWith('data:')) {
+        // Last resort: convert data-URL image to blob URL once
+        revokePuzzleObjectUrl();
+        // draw not available sync — keep data url only if tiny; otherwise empty until blob ready
+        url = imageOrUrl.src;
+        sessionImgObjectUrl = url;
+      }
+      if (url) {
+        world.style.setProperty('--puzzle-img', 'url("' + url.replace(/"/g, '\"') + '")');
+      } else {
+        world.style.setProperty('--puzzle-img', 'none');
+      }
+      return url || '';
+    }
+
+    /** Downscale large images before IDB storage (keeps resume light). */
+    async function blobForSession(sourceBlobOrImg) {
+      try {
+        let bitmap;
+        if (sourceBlobOrImg instanceof Blob) {
+          bitmap = await createImageBitmap(sourceBlobOrImg);
+        } else {
+          bitmap = await createImageBitmap(sourceBlobOrImg);
+        }
+        const maxEdge = 2048;
+        let w = bitmap.width, h = bitmap.height;
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close && bitmap.close();
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.88));
+        return blob || sourceBlobOrImg;
+      } catch (e) {
+        console.warn('session image compress failed', e);
+        return sourceBlobOrImg instanceof Blob ? sourceBlobOrImg : null;
+      }
+    }
+
     async function startPuzzle() {
       const fileInput = document.getElementById('imageFile');
       const urlInput = document.getElementById('imageUrl');
@@ -211,21 +281,35 @@
 
       try {
         img = await loadImage(src);
-        // Durable image for autosave
+        // Durable image for autosave: Blob in IDB (NOT a data-URL string)
+        sessionImgBlob = null;
+        sessionImgRemoteUrl = null;
         if (fileInput.files && fileInput.files[0]) {
           sessionImgIsRemote = false;
-          sessionImgDataUrl = await blobToDataUrl(fileInput.files[0]);
-        } else if (src.startsWith('data:')) {
-          sessionImgIsRemote = false;
-          sessionImgDataUrl = src;
+          sessionImgBlob = await blobForSession(fileInput.files[0]);
         } else if (src.startsWith('blob:')) {
           sessionImgIsRemote = false;
-          sessionImgDataUrl = await blobToDataUrl(await (await fetch(src)).blob());
+          sessionImgBlob = await blobForSession(await (await fetch(src)).blob());
+        } else if (src.startsWith('data:')) {
+          sessionImgIsRemote = false;
+          const r = await fetch(src);
+          sessionImgBlob = await blobForSession(await r.blob());
         } else {
-          // Remote URL (or proxy URL on img.src)
           sessionImgIsRemote = true;
-          sessionImgDataUrl = (img.src && !img.src.startsWith('blob:')) ? img.src : src;
+          sessionImgRemoteUrl = (img.src && !img.src.startsWith('blob:')) ? img.src : src;
+          // Also keep a compressed blob when possible for reliable resume offline
+          try {
+            const canvas = document.createElement('canvas');
+            const maxEdge = 2048;
+            const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+            canvas.width = Math.round((img.naturalWidth || img.width) * scale);
+            canvas.height = Math.round((img.naturalHeight || img.height) * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            sessionImgBlob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.88));
+            sessionImgIsRemote = false; // prefer blob for resume
+          } catch (_) {}
         }
+        setSharedPuzzleImage(img);
       } catch (err) {
         statusEl.textContent = err.message;
         startBtn.disabled = false;
@@ -260,6 +344,7 @@
     }
 
     async function createPuzzle(restoreState) {
+      if (img) setSharedPuzzleImage(img);
       // Clear
       pieces.forEach(p => p.el.remove());
       pieces = [];
@@ -366,12 +451,14 @@
 
           const visual = document.createElement('div');
           visual.className = 'piece-visual';
-          visual.style.backgroundImage = `url(${img.src})`;
-          visual.style.backgroundSize = `${boardW}px ${boardH}px`;
-          visual.style.backgroundPosition = `${-(c * pieceW - pad)}px ${-(r * pieceH - pad)}px`;
+          // Short shared URL (blob:/http:) — NOT a data-URL. Same string on every piece is fine.
+          const imgUrl = sessionImgObjectUrl || (img && img.src) || '';
+          if (imgUrl) visual.style.backgroundImage = 'url("' + imgUrl + '")';
+          visual.style.backgroundSize = boardW + 'px ' + boardH + 'px';
+          visual.style.backgroundPosition = (-(c * pieceW - pad)) + 'px ' + (-(r * pieceH - pad)) + 'px';
           visual.style.backgroundRepeat = 'no-repeat';
-          visual.style.clipPath = `path('${pathD}')`;
-          visual.style.webkitClipPath = `path('${pathD}')`;
+          visual.style.clipPath = "path('" + pathD + "')";
+          visual.style.webkitClipPath = "path('" + pathD + "')";
           el.appendChild(visual);
 
           const ox = pad;
@@ -1477,7 +1564,7 @@
 
 
 
-    // ========== Session autosave (v0.4.1 — light) ==========
+    // ========== Session autosave (v0.4.3 — light) ==========
     const SESSION_META_KEY = 'art-jigsaw-session-meta';
     const IDB_NAME = 'art-jigsaw-db';
     const IDB_STORE = 'session';
@@ -1545,7 +1632,7 @@
         if (!groupKeys.has(p.group)) groupKeys.set(p.group, gid++);
       });
       return {
-        version: '0.4.1',
+        version: '0.4.3',
         savedAt: Date.now(),
         cols, rows,
         shape: window._pieceShape || 'classic',
@@ -1553,7 +1640,7 @@
         vertTabs, horizTabs,
         panX, panY, scale,
         imgRemote: sessionImgIsRemote,
-        imageUrl: sessionImgIsRemote ? sessionImgDataUrl : null,
+        imageUrl: sessionImgIsRemote ? sessionImgRemoteUrl : null,
         pieces: pieces.map(p => ({
           r: p.r, c: p.c,
           left: parseFloat(p.el.style.left),
@@ -1571,13 +1658,14 @@
         const payload = buildSessionPayload();
         if (!payload) return;
 
-        // Image: write at most once per loaded puzzle (huge payload)
-        if (!idbImageWritten && sessionImgDataUrl && !sessionImgIsRemote) {
-          await idbSet('image', sessionImgDataUrl);
-          idbImageWritten = true;
-        } else if (!idbImageWritten && sessionImgIsRemote && sessionImgDataUrl) {
-          // remote: only store URL inside meta (already in payload.imageUrl)
-          idbImageWritten = true;
+        // Image: write Blob once (binary, not base64 data-URL)
+        if (!idbImageWritten) {
+          if (sessionImgBlob) {
+            await idbSet('image', sessionImgBlob);
+            idbImageWritten = true;
+          } else if (sessionImgIsRemote && sessionImgRemoteUrl) {
+            idbImageWritten = true; // URL is in meta.imageUrl only
+          }
         }
 
         await idbSet('meta', payload);
@@ -1643,9 +1731,8 @@
           statusEl.textContent = 'No saved session found.';
           return false;
         }
-        const imageData = await idbGet('image');
-        const src = imageData || meta.imageUrl || null;
-        if (!src) {
+        const imageData = await idbGet('image'); // Blob or legacy string
+        if (!imageData && !meta.imageUrl) {
           statusEl.textContent = 'Session found but image is missing. Start a new puzzle.';
           return false;
         }
@@ -1654,10 +1741,27 @@
         showProgress('Restoring session…', 5);
         await yieldFrame();
 
+        let src;
+        if (imageData instanceof Blob) {
+          sessionImgBlob = imageData;
+          sessionImgIsRemote = false;
+          src = URL.createObjectURL(imageData);
+          sessionImgObjectUrl = src;
+        } else if (typeof imageData === 'string') {
+          // legacy data-URL or remote URL from older builds
+          sessionImgBlob = null;
+          src = imageData;
+          sessionImgIsRemote = !imageData.startsWith('data:');
+          sessionImgRemoteUrl = sessionImgIsRemote ? imageData : null;
+        } else {
+          sessionImgIsRemote = true;
+          sessionImgRemoteUrl = meta.imageUrl;
+          src = meta.imageUrl;
+        }
+
         img = await loadImage(src);
-        sessionImgDataUrl = src;
-        sessionImgIsRemote = !!meta.imgRemote && !String(src).startsWith('data:');
-        idbImageWritten = true; // already in IDB
+        setSharedPuzzleImage(img);
+        idbImageWritten = true;
         placementDirty = false;
 
         cols = rows = meta.cols;
@@ -1826,4 +1930,4 @@
     }
 
     updateResumeButton();
-    console.info('[Art Jigsaw] v0.4.1 · light-autosave · resume-btn · cheat-10ms');
+    console.info('[Art Jigsaw] v0.4.3 · visible-pieces · blob-idb · short-url');
