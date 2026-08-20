@@ -18,13 +18,72 @@
       if (CFG.text) root.style.setProperty('--text', CFG.text);
       if (CFG.muted) root.style.setProperty('--muted', CFG.muted);
       if (CFG.boardBg) root.style.setProperty('--board-bg', CFG.boardBg);
-      root.style.setProperty('--emboss', String(CFG.embossStrength != null ? CFG.embossStrength : 1));
-      root.style.setProperty('--shadow', String(CFG.shadowStrength != null ? CFG.shadowStrength : 1));
+      const emb = CFG.embossStrength != null ? CFG.embossStrength : 0.8;
+      const sh = CFG.shadowStrength != null ? CFG.shadowStrength : 1.5;
+      const sb = CFG.shadowBlur != null ? CFG.shadowBlur : 0.75;
       document.body.classList.toggle('reduce-motion', !!CFG.reduceMotion);
+
+      // --- Inner emboss (on .piece-visual, follows clip-path) ---
+      // Two zero-blur drop-shadows = edge highlight + shade along the shape alpha
+      if (emb <= 0.05) {
+        root.style.setProperty('--piece-emboss', 'none');
+      } else {
+        const off = (0.6 + emb * 0.9).toFixed(2);
+        const hi = (0.25 + emb * 0.4).toFixed(3);
+        const shd = (0.25 + emb * 0.35).toFixed(3);
+        root.style.setProperty(
+          '--piece-emboss',
+          `drop-shadow(-${off}px -${off}px 0 rgba(255,255,255,${hi})) drop-shadow(${off}px ${off}px 0 rgba(0,0,0,${shd}))`
+        );
+      }
+
+      // --- Outer shadow (on .piece wrapper) ---
+      if (sh <= 0.05) {
+        root.style.setProperty('--piece-shadow', 'none');
+        root.style.setProperty('--piece-shadow-drag', 'none');
+      } else if (sb <= 0.001) {
+        // Hard single-sample shadow
+        const dy = (2 + sh * 2).toFixed(1);
+        const a = (0.35 * sh).toFixed(3);
+        root.style.setProperty('--piece-shadow', `drop-shadow(0 ${dy}px 0 rgba(0,0,0,${a}))`);
+        root.style.setProperty('--piece-shadow-drag', `drop-shadow(0 ${(4+sh*4).toFixed(1)}px 0 rgba(0,0,0,${(0.45*sh).toFixed(3)}))`);
+      } else {
+        const b1 = (3 * sb * sh).toFixed(1);
+        const b2 = (10 * sb * sh).toFixed(1);
+        const a1 = (0.4 * sh).toFixed(3);
+        const a2 = (0.28 * sh).toFixed(3);
+        root.style.setProperty(
+          '--piece-shadow',
+          `drop-shadow(0 ${(2*sh).toFixed(1)}px ${b1}px rgba(0,0,0,${a1})) drop-shadow(0 ${(5*sh).toFixed(1)}px ${b2}px rgba(0,0,0,${a2}))`
+        );
+        root.style.setProperty(
+          '--piece-shadow-drag',
+          `drop-shadow(0 ${(8*sh).toFixed(1)}px ${(12*sb*sh).toFixed(1)}px rgba(0,0,0,${(0.5*sh).toFixed(3)})) drop-shadow(0 ${(16*sh).toFixed(1)}px ${(24*sb*sh).toFixed(1)}px rgba(0,0,0,${(0.3*sh).toFixed(3)}))`
+        );
+      }
+
       const vt = document.getElementById('versionTag');
-      if (vt) vt.textContent = 'v' + (CFG.version || '0.3.0');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.3.4');
     }
     applyThemeFromConfig();
+
+    const progressOverlay = document.getElementById('progress-overlay');
+    const progressBar = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
+    function showProgress(label, pct) {
+      if (!progressOverlay) return;
+      progressOverlay.hidden = false;
+      if (progressLabel) progressLabel.textContent = label || 'Working…';
+      if (progressBar) progressBar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+    }
+    function hideProgress() {
+      if (!progressOverlay) return;
+      progressOverlay.hidden = true;
+      if (progressBar) progressBar.style.width = '0%';
+    }
+    function yieldFrame() {
+      return new Promise(r => requestAnimationFrame(() => r()));
+    }
 
     const viewport = document.getElementById('viewport');
     const world = document.getElementById('world');
@@ -68,14 +127,65 @@
     let vertTabs = [];
     let horizTabs = [];
 
-    function loadImage(src) {
+    /**
+     * Load image for CSS background-image use.
+     * Strategy:
+     *  1) Direct load WITHOUT crossOrigin (bg-image does not need CORS; crossOrigin often breaks remote hosts)
+     *  2) If that fails, try public CORS proxies → blob object URL
+     *  3) File upload remains the reliable path
+     */
+    function loadImageFromSrc(src, useCors) {
       return new Promise((resolve, reject) => {
         const image = new Image();
-        image.crossOrigin = 'anonymous';
+        if (useCors) image.crossOrigin = 'anonymous';
         image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('Failed to load image. Try file upload (CORS often blocks external URLs).'));
+        image.onerror = () => reject(new Error('load failed'));
         image.src = src;
       });
+    }
+
+    async function fetchViaProxy(url) {
+      const proxies = [
+        // images.weserv.nl — image CDN proxy, usually solid
+        'https://images.weserv.nl/?url=' + encodeURIComponent(url.replace(/^https?:\/\//, '')),
+        // wsrv.nl alias
+        'https://wsrv.nl/?url=' + encodeURIComponent(url),
+        // generic CORS proxy → blob
+        'https://corsproxy.io/?' + encodeURIComponent(url)
+      ];
+      for (const p of proxies) {
+        try {
+          const img = await loadImageFromSrc(p, false);
+          return img;
+        } catch (_) { /* try next */ }
+      }
+      // last resort: fetch blob through corsproxy
+      try {
+        const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+        if (!res.ok) throw new Error('proxy http ' + res.status);
+        const blob = await res.blob();
+        if (!blob.type.startsWith('image/')) throw new Error('not an image');
+        const obj = URL.createObjectURL(blob);
+        return await loadImageFromSrc(obj, false);
+      } catch (_) {}
+      throw new Error('All image proxies failed');
+    }
+
+    async function loadImage(src) {
+      // blob: / data: / same-origin — direct
+      if (/^(blob:|data:|\/)/.test(src)) {
+        return loadImageFromSrc(src, false);
+      }
+      // 1) plain load (best for background-image)
+      try {
+        return await loadImageFromSrc(src, false);
+      } catch (_) {}
+      // 2) proxies
+      try {
+        statusEl.textContent = 'URL blocked by host — trying image proxy…';
+        return await fetchViaProxy(src);
+      } catch (_) {}
+      throw new Error('Could not load image URL (CORS). Use File upload, or host the image on a CORS-friendly CDN.');
     }
 
     async function startPuzzle() {
@@ -105,7 +215,7 @@
 
       cols = rows = parseInt(document.getElementById('gridSize').value, 10);
       window._pieceShape = document.getElementById('pieceShape').value || 'classic';
-      createPuzzle();
+      await createPuzzle();
       // Free up screen space on phones/tablets after starting
       if (window.matchMedia('(max-width: 720px)').matches) {
         const panel = document.getElementById('controlsPanel');
@@ -123,7 +233,7 @@
       resetBtn.disabled = false;
     }
 
-    function createPuzzle() {
+    async function createPuzzle() {
       // Clear
       pieces.forEach(p => p.el.remove());
       pieces = [];
@@ -175,9 +285,19 @@
         }
       }
 
-      // Create interlocking pieces (SVG-style clip-path for resolution-independent shapes)
+      // Create interlocking pieces in batches (keeps UI responsive on low-end devices)
+      const jobs = [];
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
+          jobs.push({ r, c });
+        }
+      }
+      const total = jobs.length;
+      const batch = Math.max(4, (CFG && CFG.createBatchSize) || 24);
+      showProgress('Creating pieces…', 0);
+
+      for (let i = 0; i < total; i++) {
+        const { r, c } = jobs[i];
           const tabs = {
             top:    r === 0 ? 0 : -horizTabs[r - 1][c],
             right:  c === cols - 1 ? 0 : vertTabs[r][c],
@@ -186,7 +306,6 @@
           };
 
           const shape = window._pieceShape || 'classic';
-          // Square has no tabs; classic & round need tab padding
           const pad = shape === 'square' ? 1.5 : (tabSize + 1.5);
           const logicalW = pieceW + 2 * pad;
           const logicalH = pieceH + 2 * pad;
@@ -195,14 +314,9 @@
           if (shape === 'square') {
             pathD = `M ${pad} ${pad} H ${pad + pieceW} V ${pad + pieceH} H ${pad} Z`;
           } else {
-            // classic = traditional jigsaw ear (like the reference photo)
-            // round  = interlocking with more circular/bulbous tabs
             pathD = buildJigsawPath(pad, pad, pieceW, pieceH, tabs, tabSize, shape);
           }
 
-          // Outer wrapper receives filters (emboss / soft shadow / glow).
-          // clip-path on the SAME element kills drop-shadow in Chrome & Firefox,
-          // so the painted shape lives on a child.
           const el = document.createElement('div');
           el.className = 'piece';
           el.style.width  = logicalW + 'px';
@@ -223,45 +337,45 @@
           const correctX = c * pieceW - ox;
           const correctY = r * pieceH - oy;
 
-          // Scatter OUTSIDE the board with a clear margin
           const margin = Math.max(pieceW, pieceH) * 0.65 + 36;
           const side = Math.floor(Math.random() * 4);
           let x, y;
 
-          if (side === 0) { // top
+          if (side === 0) {
             x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
             y = -margin - logicalH - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
-          } else if (side === 1) { // right
+          } else if (side === 1) {
             x = boardW + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
             y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
-          } else if (side === 2) { // bottom
+          } else if (side === 2) {
             x = -margin + Math.random() * (boardW + 2 * margin) - logicalW / 2;
             y = boardH + margin + Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
-          } else { // left
+          } else {
             x = -margin - logicalW - Math.random() * (Math.max(boardH, boardW) * 0.4 + 70);
             y = -margin + Math.random() * (boardH + 2 * margin) - logicalH / 2;
           }
 
           el.style.left = x + 'px';
           el.style.top = y + 'px';
-          el.style.zIndex = 10 + Math.floor(Math.random() * 20);
+          el.style.zIndex = 10 + Math.floor(Math.random() * 40);
 
           const piece = {
-            el, r, c, tabs,
-            ox, oy,
-            correctX, correctY,
+            el, r, c, w: logicalW, h: logicalH,
+            ox, oy, correctX, correctY,
             placed: false,
-            w: logicalW,
-            h: logicalH,
             group: null
           };
           piece.group = [piece];
           pieces.push(piece);
-
           el.addEventListener('pointerdown', (e) => onPiecePointerDown(e, piece));
           world.appendChild(el);
+
+        if ((i + 1) % batch === 0 || i === total - 1) {
+          showProgress('Creating pieces… ' + (i + 1) + '/' + total, ((i + 1) / total) * 100);
+          await yieldFrame();
         }
       }
+      hideProgress();
 
       hintImg.src = img.src;
       hintImg.style.display = 'none';
@@ -289,6 +403,26 @@
       const baseF = (CFG && CFG.tabBaseFactor) || 0.42;
       const heightF = (CFG && CFG.tabHeightFactor) || 1.05;
       const roundS = (CFG && CFG.roundTabScale) || 1.0;
+      const pathSegs = Math.max(4, Math.min(24, (CFG && CFG.pathSegments) || 20));
+
+      // Sample a cubic bezier into line segments (same control points, tunable resolution)
+      function cubicToLines(x0,y0,x1,y1,x2,y2,x3,y3, segs) {
+        const out = [];
+        for (let i = 1; i <= segs; i++) {
+          const t = i / segs, u = 1 - t;
+          const x = u*u*u*x0 + 3*u*u*t*x1 + 3*u*t*t*x2 + t*t*t*x3;
+          const y = u*u*u*y0 + 3*u*u*t*y1 + 3*u*t*t*y2 + t*t*t*y3;
+          out.push(`L ${f(x)} ${f(y)}`);
+        }
+        return out.join(' ');
+      }
+      // Emit either native cubics (segs high) or tessellated lines
+      function emitCubic(x0,y0,x1,y1,x2,y2,x3,y3) {
+        if (pathSegs >= 18) {
+          return `C ${f(x1)} ${f(y1)} ${f(x2)} ${f(y2)} ${f(x3)} ${f(y3)}`;
+        }
+        return cubicToLines(x0,y0,x1,y1,x2,y2,x3,y3, pathSegs);
+      }
 
       // Classic toy-puzzle tooth — JClic ClassicJigSaw geometry (3 cubics)
       function tabClassicH(x1, y1, x2, y2, outward) {
@@ -302,17 +436,16 @@
         const th = t * heightF;
         const o = outward;
         const uh = th / 5;
+        // Same control points; pathSegments controls tessellation density
+        const a0x = x0, a0y = y1;
+        const a1x = x0 + 4*u, a1y = y1, a2x = x0 + 6*u, a2y = y1 + o*uh, a3x = x0 + 4*u, a3y = y1 + o*3*uh;
+        const b1x = x0 + 2*u, b1y = y1 + o*5*uh, b2x = x0 + 10*u, b2y = y1 + o*5*uh, b3x = x0 + 8*u, b3y = y1 + o*3*uh;
+        const c1x = x0 + 6*u, c1y = y1 + o*uh, c2x = x0 + 8*u, c2y = y1, c3x = x0 + 12*u, c3y = y1;
         return [
-          `L ${f(x0)} ${f(y1)}`,
-          `C ${f(x0 + 4 * u)} ${f(y1)}`,
-            `${f(x0 + 6 * u)} ${f(y1 + o * uh)}`,
-            `${f(x0 + 4 * u)} ${f(y1 + o * 3 * uh)}`,
-          `C ${f(x0 + 2 * u)} ${f(y1 + o * 5 * uh)}`,
-            `${f(x0 + 10 * u)} ${f(y1 + o * 5 * uh)}`,
-            `${f(x0 + 8 * u)} ${f(y1 + o * 3 * uh)}`,
-          `C ${f(x0 + 6 * u)} ${f(y1 + o * 1 * uh)}`,
-            `${f(x0 + 8 * u)} ${f(y1)}`,
-            `${f(x0 + 12 * u)} ${f(y1)}`
+          `L ${f(a0x)} ${f(a0y)}`,
+          emitCubic(a0x,a0y, a1x,a1y, a2x,a2y, a3x,a3y),
+          emitCubic(a3x,a3y, b1x,b1y, b2x,b2y, b3x,b3y),
+          emitCubic(b3x,b3y, c1x,c1y, c2x,c2y, c3x,c3y)
         ].join(' ');
       }
 
@@ -326,17 +459,15 @@
         const th = t * heightF;
         const o = outward;
         const uh = th / 5;
+        const a0x = x1, a0y = y0;
+        const a1x = x1, a1y = y0 + 4*u, a2x = x1 + o*uh, a2y = y0 + 6*u, a3x = x1 + o*3*uh, a3y = y0 + 4*u;
+        const b1x = x1 + o*5*uh, b1y = y0 + 2*u, b2x = x1 + o*5*uh, b2y = y0 + 10*u, b3x = x1 + o*3*uh, b3y = y0 + 8*u;
+        const c1x = x1 + o*uh, c1y = y0 + 6*u, c2x = x1, c2y = y0 + 8*u, c3x = x1, c3y = y0 + 12*u;
         return [
-          `L ${f(x1)} ${f(y0)}`,
-          `C ${f(x1)} ${f(y0 + 4 * u)}`,
-            `${f(x1 + o * uh)} ${f(y0 + 6 * u)}`,
-            `${f(x1 + o * 3 * uh)} ${f(y0 + 4 * u)}`,
-          `C ${f(x1 + o * 5 * uh)} ${f(y0 + 2 * u)}`,
-            `${f(x1 + o * 5 * uh)} ${f(y0 + 10 * u)}`,
-            `${f(x1 + o * 3 * uh)} ${f(y0 + 8 * u)}`,
-          `C ${f(x1 + o * 1 * uh)} ${f(y0 + 6 * u)}`,
-            `${f(x1)} ${f(y0 + 8 * u)}`,
-            `${f(x1)} ${f(y0 + 12 * u)}`
+          `L ${f(a0x)} ${f(a0y)}`,
+          emitCubic(a0x,a0y, a1x,a1y, a2x,a2y, a3x,a3y),
+          emitCubic(a3x,a3y, b1x,b1y, b2x,b2y, b3x,b3y),
+          emitCubic(b3x,b3y, c1x,c1y, c2x,c2y, c3x,c3y)
         ].join(' ');
       }
 
@@ -744,7 +875,8 @@
     function checkWin() {
       const allPlaced = pieces.every(p => p.placed);
       if (allPlaced) {
-        setTimeout(() => winOverlay.classList.add('show'), 250);
+        fitToView();
+        setTimeout(() => winOverlay.classList.add('show'), 320);
       }
       updateStatus();
     }
@@ -929,9 +1061,11 @@
       applyTransform();
     }
 
-    function rescatter() {
+    async function rescatter() {
       if (!pieces.length) return;
       winOverlay.classList.remove('show');
+      showProgress('Rescattering…', 10);
+      await yieldFrame();
 
       // Keep placed pieces + any free groups (≥2 connected) where they are.
       // Only singleton free pieces get thrown around.
@@ -966,6 +1100,9 @@
         p.el.style.top = y + 'px';
         p.el.style.zIndex = 10 + Math.floor(Math.random() * 25);
       });
+      showProgress('Rescattering…', 100);
+      await yieldFrame();
+      hideProgress();
       updateStatus();
       fitToView();
     }
@@ -975,7 +1112,7 @@
      * Does NOT break groups. Does NOT move placed pieces.
      * Keeps everything near its current position.
      */
-    function unstackPieces() {
+    async function unstackPieces() {
       if (!pieces.length) return;
       winOverlay.classList.remove('show');
 
@@ -985,7 +1122,10 @@
         return;
       }
 
-      // Unique free groups (connected bundles stay together)
+      showProgress('Unstacking…', 2);
+      await yieldFrame();
+
+      // Unique free groups
       const groups = [];
       const seen = new Set();
       free.forEach(p => {
@@ -1004,7 +1144,7 @@
           maxX = Math.max(maxX, x + p.w);
           maxY = Math.max(maxY, y + p.h);
         });
-        return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+        return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: maxX - minX, h: maxY - minY };
       }
 
       function moveGroup(g, dx, dy) {
@@ -1015,37 +1155,61 @@
       }
 
       const pad = Math.max(4, Math.min(pieceW, pieceH) * 0.08);
-      // A few relaxation passes — small pushes only
-      for (let iter = 0; iter < 14; iter++) {
-        for (let i = 0; i < groups.length; i++) {
-          for (let j = i + 1; j < groups.length; j++) {
-            const a = groupBBox(groups[i]);
-            const b = groupBBox(groups[j]);
+
+      // Broad-phase: only pairs that currently overlap (whitelist)
+      function buildOverlapPairs(list) {
+        const boxes = list.map(groupBBox);
+        const pairs = [];
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length; j++) {
+            const a = boxes[i], b = boxes[j];
             if (a.maxX + pad < b.minX || b.maxX + pad < a.minX ||
                 a.maxY + pad < b.minY || b.maxY + pad < a.minY) continue;
-
-            let dx = a.cx - b.cx;
-            let dy = a.cy - b.cy;
-            let dist = Math.hypot(dx, dy);
-            if (dist < 0.5) {
-              // perfectly stacked — pick a stable direction from index
-              const ang = ((i * 17 + j * 31) % 360) * Math.PI / 180;
-              dx = Math.cos(ang);
-              dy = Math.sin(ang);
-              dist = 1;
-            } else {
-              dx /= dist;
-              dy /= dist;
-            }
-            const push = 5 + iter * 0.35;
-            moveGroup(groups[i], dx * push * 0.5, dy * push * 0.5);
-            moveGroup(groups[j], -dx * push * 0.5, -dy * push * 0.5);
+            pairs.push([i, j]);
           }
         }
+        return { boxes, pairs };
       }
 
+      let active = groups.slice();
+      const maxIter = 14;
+      for (let iter = 0; iter < maxIter; iter++) {
+        const { boxes, pairs } = buildOverlapPairs(active);
+        if (!pairs.length) {
+          showProgress('Unstacking…', 100);
+          break;
+        }
+
+        // Only push overlapping pairs
+        for (let p = 0; p < pairs.length; p++) {
+          const i = pairs[p][0], j = pairs[p][1];
+          const a = boxes[i], b = boxes[j];
+          let dx = a.cx - b.cx;
+          let dy = a.cy - b.cy;
+          let dist = Math.hypot(dx, dy);
+          if (dist < 0.5) {
+            const ang = ((i * 17 + j * 31) % 360) * Math.PI / 180;
+            dx = Math.cos(ang); dy = Math.sin(ang); dist = 1;
+          } else {
+            dx /= dist; dy /= dist;
+          }
+          const push = 5 + iter * 0.35;
+          moveGroup(active[i], dx * push * 0.5, dy * push * 0.5);
+          moveGroup(active[j], -dx * push * 0.5, -dy * push * 0.5);
+        }
+
+        // Shrink active set to groups that still appear in a pair (optional refinement)
+        if (pairs.length * 2 < active.length) {
+          const keep = new Set();
+          pairs.forEach(([i, j]) => { keep.add(i); keep.add(j); });
+          active = active.filter((_, idx) => keep.has(idx));
+        }
+
+        showProgress('Unstacking…', Math.round(((iter + 1) / maxIter) * 100));
+        await yieldFrame();
+      }
+      hideProgress();
       updateStatus();
-      // Do not fitToView — stay where the user is looking
     }
 
     function updateStatus() {
@@ -1081,7 +1245,7 @@
       });
     }
 
-    console.info('[Art Jigsaw] v0.3.0 · config-panel · group-safe-rescatter · classic-tabs');
+    console.info('[Art Jigsaw] v0.3.4 · cors-proxy · shadow-defaults · wrap-0.3.x');
 
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startPuzzle();
@@ -1118,6 +1282,7 @@
         tabBaseFactor: 'cfg_tabBaseFactor',
         tabHeightFactor: 'cfg_tabHeightFactor',
         roundTabScale: 'cfg_roundTabScale',
+        pathSegments: 'cfg_pathSegments',
         snapFactor: 'cfg_snapFactor',
         scatterSpread: 'cfg_scatterSpread',
         accent: 'cfg_accent',
@@ -1125,6 +1290,8 @@
         panel: 'cfg_panel',
         embossStrength: 'cfg_embossStrength',
         shadowStrength: 'cfg_shadowStrength',
+        shadowBlur: 'cfg_shadowBlur',
+        createBatchSize: 'cfg_createBatchSize',
         reduceMotion: 'cfg_reduceMotion'
       };
 
@@ -1134,6 +1301,7 @@
           if (!el) return;
           if (el.type === 'checkbox') el.checked = !!CFG[k];
           else if (el.type === 'color') el.value = CFG[k] || '#000000';
+          else if (el.tagName === 'SELECT') el.value = String(CFG[k]);
           else {
             el.value = CFG[k];
             const span = document.querySelector('span[data-for="' + el.id + '"]');
@@ -1148,6 +1316,7 @@
           if (!el) return;
           if (el.type === 'checkbox') CFG[k] = el.checked;
           else if (el.type === 'color') CFG[k] = el.value;
+          else if (el.tagName === 'SELECT') CFG[k] = parseInt(el.value, 10);
           else CFG[k] = parseFloat(el.value);
         });
       }
@@ -1173,7 +1342,8 @@
           const span = document.querySelector('span[data-for="' + id + '"]');
           if (span) span.textContent = el.type === 'checkbox' ? '' : el.value;
           if (id === 'cfg_accent' || id === 'cfg_bg' || id === 'cfg_panel' ||
-              id === 'cfg_embossStrength' || id === 'cfg_shadowStrength' || id === 'cfg_reduceMotion') {
+              id === 'cfg_embossStrength' || id === 'cfg_shadowStrength' || id === 'cfg_shadowBlur' ||
+              id === 'cfg_reduceMotion') {
             readConfigForm();
             applyThemeFromConfig();
           }
