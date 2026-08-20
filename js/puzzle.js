@@ -1,3 +1,31 @@
+    // ---- Config (defaults from js/config.js + localStorage override) ----
+    const STORAGE_KEY = 'art-jigsaw-config';
+    function loadConfig() {
+      const base = Object.assign({}, window.JIGSAW_DEFAULTS || {});
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) Object.assign(base, JSON.parse(raw));
+      } catch (_) {}
+      return base;
+    }
+    let CFG = loadConfig();
+
+    function applyThemeFromConfig() {
+      const root = document.documentElement;
+      if (CFG.accent) root.style.setProperty('--accent', CFG.accent);
+      if (CFG.bg) root.style.setProperty('--bg', CFG.bg);
+      if (CFG.panel) root.style.setProperty('--panel', CFG.panel);
+      if (CFG.text) root.style.setProperty('--text', CFG.text);
+      if (CFG.muted) root.style.setProperty('--muted', CFG.muted);
+      if (CFG.boardBg) root.style.setProperty('--board-bg', CFG.boardBg);
+      root.style.setProperty('--emboss', String(CFG.embossStrength != null ? CFG.embossStrength : 1));
+      root.style.setProperty('--shadow', String(CFG.shadowStrength != null ? CFG.shadowStrength : 1));
+      document.body.classList.toggle('reduce-motion', !!CFG.reduceMotion);
+      const vt = document.getElementById('versionTag');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.3.0');
+    }
+    applyThemeFromConfig();
+
     const viewport = document.getElementById('viewport');
     const world = document.getElementById('world');
     const boardEl = document.getElementById('board');
@@ -103,7 +131,8 @@
       boardEl.innerHTML = '';
 
       // Display size (base world size) — larger base for high piece counts so pieces stay usable
-      const maxBase = cols >= 24 ? 1400 : cols >= 16 ? 1200 : cols >= 10 ? 960 : 800;
+      const maxBaseCap = (CFG && CFG.maxBaseSize) || 1400;
+      const maxBase = cols >= 24 ? maxBaseCap : cols >= 16 ? Math.min(1200, maxBaseCap) : cols >= 10 ? 960 : 800;
       const scaleImg = Math.min(maxBase / img.width, maxBase / img.height, 1.35);
       boardW = Math.floor(img.width * scaleImg);
       boardH = Math.floor(img.height * scaleImg);
@@ -114,13 +143,16 @@
       pieceW = boardW / cols;
       pieceH = boardH / rows;
 
-      // Tab size must stay proportional — never dominate small pieces
-      // Classic look is ~16–19% of the shorter side
+      // Tab size — proportional, scaled by config.tabScale
       const minDim = Math.min(pieceW, pieceH);
-      tabSize = Math.max(4, Math.min(minDim * 0.19, minDim * 0.22));
+      const tabScale = (CFG && CFG.tabScale) || 1.35;
+      tabSize = Math.max(4, Math.min(minDim * 0.19, minDim * 0.22) * tabScale);
 
-      // Snap distance scales with piece size so high piece-counts stay playable
-      snapThreshold = Math.max(12, Math.min(28, minDim * 0.38));
+      // Snap distance
+      const snapF = (CFG && CFG.snapFactor) || 0.38;
+      const snapMin = (CFG && CFG.snapMin) || 12;
+      const snapMax = (CFG && CFG.snapMax) || 32;
+      snapThreshold = Math.max(snapMin, Math.min(snapMax, minDim * snapF));
 
       boardEl.style.width = boardW + 'px';
       boardEl.style.height = boardH + 'px';
@@ -254,20 +286,21 @@
      */
     function buildJigsawPath(x, y, w, h, tabs, t, style) {
       const f = (n) => Math.round(n * 1000) / 1000;
+      const baseF = (CFG && CFG.tabBaseFactor) || 0.42;
+      const heightF = (CFG && CFG.tabHeightFactor) || 1.05;
+      const roundS = (CFG && CFG.roundTabScale) || 1.0;
 
       // Classic toy-puzzle tooth — JClic ClassicJigSaw geometry (3 cubics)
       function tabClassicH(x1, y1, x2, y2, outward) {
         // from (x1,y1) to (x2,y2) along horizontal top or bottom
         // outward: -1 = up (top edge tab out), +1 = down
         const L = x2 - x1;
-        const baseW = Math.min(Math.abs(L) * 0.40, t * 2.4);
+        const baseW = Math.min(Math.abs(L) * baseF, t * 2.6);
         const mid = (x1 + x2) / 2;
         const x0 = mid - baseW / 2;
         const u = baseW / 12;
-        const th = t * 0.92; // tooth height
-        const o = outward; // +1 down, -1 up
-        // JClic: hb = h * toothHeightFactor / 8, with 5*hb ≈ tip
-        // Map: tip at ~th, so unitH = th/5
+        const th = t * heightF;
+        const o = outward;
         const uh = th / 5;
         return [
           `L ${f(x0)} ${f(y1)}`,
@@ -286,11 +319,11 @@
       function tabClassicV(x1, y1, x2, y2, outward) {
         // vertical edge top→bottom. outward: +1 right, -1 left
         const L = y2 - y1;
-        const baseW = Math.min(Math.abs(L) * 0.40, t * 2.4);
+        const baseW = Math.min(Math.abs(L) * baseF, t * 2.6);
         const mid = (y1 + y2) / 2;
         const y0 = mid - baseW / 2;
         const u = baseW / 12;
-        const th = t * 0.92;
+        const th = t * heightF;
         const o = outward;
         const uh = th / 5;
         return [
@@ -310,7 +343,7 @@
       // Round style: more circular bulb
       function tabRoundH(cx, cy, outward) {
         const k = 0.5523;
-        const r = t * 0.88;
+        const r = t * 0.88 * roundS;
         const neck = t * 0.28;
         const shoulder = t * 0.55;
         const o = outward;
@@ -335,7 +368,7 @@
 
       function tabRoundV(cx, cy, outward) {
         const k = 0.5523;
-        const r = t * 0.88;
+        const r = t * 0.88 * roundS;
         const neck = t * 0.28;
         const shoulder = t * 0.55;
         const o = outward;
@@ -399,7 +432,7 @@
           // Actually path goes right to left on bottom. Generate points in reverse order.
           const mid = x + w / 2;
           const k = 0.5523;
-          const r = t * 0.88;
+          const r = t * 0.88 * roundS;
           const neck = t * 0.28;
           const shoulder = t * 0.55;
           const o = outward;
@@ -420,11 +453,11 @@
           d += ` ${f(mid - shoulder)} ${f(y + h)}`;
         } else {
           // classic bottom, right→left: mirror of tabClassicH
-          const baseW = Math.min(w * 0.40, t * 2.4);
+          const baseW = Math.min(w * baseF, t * 2.6);
           const mid = x + w / 2;
-          const x0 = mid + baseW / 2; // start from right of tooth
+          const x0 = mid + baseW / 2;
           const u = baseW / 12;
-          const th = t * 0.92;
+          const th = t * heightF;
           const o = outward;
           const uh = th / 5;
           d += ` L ${f(x0)} ${f(y + h)}`;
@@ -449,7 +482,7 @@
         if (style === 'round') {
           const mid = y + h / 2;
           const k = 0.5523;
-          const r = t * 0.88;
+          const r = t * 0.88 * roundS;
           const neck = t * 0.28;
           const shoulder = t * 0.55;
           const o = outward;
@@ -469,11 +502,11 @@
           d += ` ${f(x + o * neck * 0.35)} ${f(mid - shoulder)}`;
           d += ` ${f(x)} ${f(mid - shoulder)}`;
         } else {
-          const baseW = Math.min(h * 0.40, t * 2.4);
+          const baseW = Math.min(h * baseF, t * 2.6);
           const mid = y + h / 2;
-          const y0 = mid + baseW / 2; // start from bottom of tooth (going up)
+          const y0 = mid + baseW / 2;
           const u = baseW / 12;
-          const th = t * 0.92;
+          const th = t * heightF;
           const o = outward;
           const uh = th / 5;
           d += ` L ${f(x)} ${f(y0)}`;
@@ -900,9 +933,13 @@
       if (!pieces.length) return;
       winOverlay.classList.remove('show');
 
-      // Only free (not yet locked) pieces — placed ones stay on the board
+      // Keep placed pieces + any free groups (≥2 connected) where they are.
+      // Only singleton free pieces get thrown around.
+      const spread = (CFG && CFG.scatterSpread != null) ? CFG.scatterSpread : 0.38;
+
       pieces.forEach(p => {
         if (p.placed) return;
+        if (p.group && p.group.length > 1) return; // connected cluster stays put
 
         p.el.classList.remove('snapped');
         p.group = [p];
@@ -913,15 +950,15 @@
 
         if (side === 0) {
           x = -margin + Math.random() * (boardW + 2 * margin) - p.w / 2;
-          y = -margin - p.h - Math.random() * (Math.max(boardH, boardW) * 0.35 + 60);
+          y = -margin - p.h - Math.random() * (Math.max(boardH, boardW) * spread + 60);
         } else if (side === 1) {
-          x = boardW + margin + Math.random() * (Math.max(boardH, boardW) * 0.35 + 60);
+          x = boardW + margin + Math.random() * (Math.max(boardH, boardW) * spread + 60);
           y = -margin + Math.random() * (boardH + 2 * margin) - p.h / 2;
         } else if (side === 2) {
           x = -margin + Math.random() * (boardW + 2 * margin) - p.w / 2;
-          y = boardH + margin + Math.random() * (Math.max(boardH, boardW) * 0.35 + 60);
+          y = boardH + margin + Math.random() * (Math.max(boardH, boardW) * spread + 60);
         } else {
-          x = -margin - p.w - Math.random() * (Math.max(boardH, boardW) * 0.35 + 60);
+          x = -margin - p.w - Math.random() * (Math.max(boardH, boardW) * spread + 60);
           y = -margin + Math.random() * (boardH + 2 * margin) - p.h / 2;
         }
 
@@ -1044,8 +1081,7 @@
       });
     }
 
-    // Build stamp — if Arrange does nothing, this JS file is not the one live on CF
-    console.info('[Art Jigsaw] v0.2.1 · classic-jclic-tabs · unstack · button-row');
+    console.info('[Art Jigsaw] v0.3.0 · config-panel · group-safe-rescatter · classic-tabs');
 
     document.getElementById('imageUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') startPuzzle();
@@ -1068,3 +1104,132 @@
         }
       }, 150);
     });
+
+
+    // ---- Config panel UI ----
+    (function setupConfigPanel() {
+      const configOverlay = document.getElementById('config-overlay');
+      const configBtn = document.getElementById('configBtn');
+      const configClose = document.getElementById('configClose');
+      if (!configOverlay || !configBtn) return;
+
+      const cfgKeys = {
+        tabScale: 'cfg_tabScale',
+        tabBaseFactor: 'cfg_tabBaseFactor',
+        tabHeightFactor: 'cfg_tabHeightFactor',
+        roundTabScale: 'cfg_roundTabScale',
+        snapFactor: 'cfg_snapFactor',
+        scatterSpread: 'cfg_scatterSpread',
+        accent: 'cfg_accent',
+        bg: 'cfg_bg',
+        panel: 'cfg_panel',
+        embossStrength: 'cfg_embossStrength',
+        shadowStrength: 'cfg_shadowStrength',
+        reduceMotion: 'cfg_reduceMotion'
+      };
+
+      function fillConfigForm() {
+        Object.keys(cfgKeys).forEach(k => {
+          const el = document.getElementById(cfgKeys[k]);
+          if (!el) return;
+          if (el.type === 'checkbox') el.checked = !!CFG[k];
+          else if (el.type === 'color') el.value = CFG[k] || '#000000';
+          else {
+            el.value = CFG[k];
+            const span = document.querySelector('span[data-for="' + el.id + '"]');
+            if (span) span.textContent = el.value;
+          }
+        });
+      }
+
+      function readConfigForm() {
+        Object.keys(cfgKeys).forEach(k => {
+          const el = document.getElementById(cfgKeys[k]);
+          if (!el) return;
+          if (el.type === 'checkbox') CFG[k] = el.checked;
+          else if (el.type === 'color') CFG[k] = el.value;
+          else CFG[k] = parseFloat(el.value);
+        });
+      }
+
+      function openConfig() {
+        fillConfigForm();
+        configOverlay.hidden = false;
+      }
+      function closeConfig() {
+        configOverlay.hidden = true;
+      }
+
+      configBtn.addEventListener('click', openConfig);
+      if (configClose) configClose.addEventListener('click', closeConfig);
+      configOverlay.addEventListener('click', (e) => {
+        if (e.target === configOverlay) closeConfig();
+      });
+
+      Object.values(cfgKeys).forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', () => {
+          const span = document.querySelector('span[data-for="' + id + '"]');
+          if (span) span.textContent = el.type === 'checkbox' ? '' : el.value;
+          if (id === 'cfg_accent' || id === 'cfg_bg' || id === 'cfg_panel' ||
+              id === 'cfg_embossStrength' || id === 'cfg_shadowStrength' || id === 'cfg_reduceMotion') {
+            readConfigForm();
+            applyThemeFromConfig();
+          }
+        });
+      });
+
+      const saveBtn = document.getElementById('cfgSave');
+      if (saveBtn) saveBtn.addEventListener('click', () => {
+        readConfigForm();
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CFG)); } catch (_) {}
+        applyThemeFromConfig();
+        closeConfig();
+        statusEl.textContent = 'Config saved. Start Puzzle again to apply tab / snap changes.';
+      });
+
+      const resetBtnCfg = document.getElementById('cfgReset');
+      if (resetBtnCfg) resetBtnCfg.addEventListener('click', () => {
+        CFG = Object.assign({}, window.JIGSAW_DEFAULTS || {});
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+        fillConfigForm();
+        applyThemeFromConfig();
+        statusEl.textContent = 'Defaults restored (not saved until you hit Save).';
+      });
+
+      const exportBtn = document.getElementById('cfgExport');
+      if (exportBtn) exportBtn.addEventListener('click', () => {
+        readConfigForm();
+        const blob = new Blob([JSON.stringify(CFG, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'art-jigsaw-config.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      const importBtn = document.getElementById('cfgImport');
+      const importFile = document.getElementById('cfgImportFile');
+      if (importBtn && importFile) {
+        importBtn.addEventListener('click', () => importFile.click());
+        importFile.addEventListener('change', (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const data = JSON.parse(reader.result);
+              CFG = Object.assign({}, window.JIGSAW_DEFAULTS || {}, data);
+              fillConfigForm();
+              applyThemeFromConfig();
+              statusEl.textContent = 'Config imported — hit Save to keep it.';
+            } catch (err) {
+              statusEl.textContent = 'Invalid config JSON.';
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = '';
+        });
+      }
+    })();
