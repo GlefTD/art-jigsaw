@@ -63,9 +63,22 @@
       }
 
       const vt = document.getElementById('versionTag');
-      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.3');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.4');
     }
     applyThemeFromConfig();
+
+    function applyTableStyle(style) {
+      const v = style || (CFG && CFG.tableStyle) || 'default';
+      const el = document.getElementById('viewport');
+      if (!el) return;
+      el.classList.remove('table-default','table-felt','table-linen','table-papyrus','table-dotted','table-cork','table-wood');
+      el.classList.add('table-' + v);
+      CFG.tableStyle = v;
+      const sel = document.getElementById('tableStyle');
+      if (sel && sel.value !== v) sel.value = v;
+    }
+    applyTableStyle((CFG && CFG.tableStyle) || 'default');
+
 
     const progressOverlay = document.getElementById('progress-overlay');
     const progressBar = document.getElementById('progressBar');
@@ -1564,7 +1577,7 @@
 
 
 
-    // ========== Session autosave (v0.4.3 — light) ==========
+    // ========== Session autosave (v0.4.4 — light) ==========
     const SESSION_META_KEY = 'art-jigsaw-session-meta';
     const IDB_NAME = 'art-jigsaw-db';
     const IDB_STORE = 'session';
@@ -1632,7 +1645,7 @@
         if (!groupKeys.has(p.group)) groupKeys.set(p.group, gid++);
       });
       return {
-        version: '0.4.3',
+        version: '0.4.4',
         savedAt: Date.now(),
         cols, rows,
         shape: window._pieceShape || 'classic',
@@ -1930,4 +1943,23 @@
     }
 
     updateResumeButton();
-    console.info('[Art Jigsaw] v0.4.3 · visible-pieces · blob-idb · short-url');
+    const tableSel = document.getElementById('tableStyle');
+    if (tableSel) {
+      tableSel.addEventListener('change', () => {
+        applyTableStyle(tableSel.value);
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          const obj = raw ? JSON.parse(raw) : {};
+          obj.tableStyle = tableSel.value;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign({}, CFG, obj)));
+        } catch (_) {}
+        // also persist into CFG save key
+        CFG.tableStyle = tableSel.value;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(CFG));
+        } catch (_) {}
+      });
+    }
+
+    console.info('[Art Jigsaw] v0.4.4 · table-surfaces · felt-linen-papyrus');
+

@@ -181,6 +181,94 @@
       cursor: grab;
       touch-action: none;
     }
+    /* ---- Table surface styles (CSS-only textures) ---- */
+    #viewport.table-default {
+      background: #151518;
+      border-color: #333;
+    }
+    #viewport.table-felt {
+      background-color: #1a4d2e;
+      background-image:
+        radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(0,0,0,0.15) 0%, transparent 45%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Ccircle cx='1' cy='1' r='0.6' fill='%23ffffff' fill-opacity='0.04'/%3E%3C/svg%3E");
+      border-color: #2d6b45;
+    }
+    #viewport.table-felt #board {
+      background: #163d25;
+      border-color: #3d7a52;
+      box-shadow: inset 0 0 24px rgba(0,0,0,0.35);
+    }
+    #viewport.table-linen {
+      background-color: #d4c4a8;
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(120,90,50,0.06) 2px, rgba(120,90,50,0.06) 3px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(120,90,50,0.05) 2px, rgba(120,90,50,0.05) 3px),
+        linear-gradient(180deg, #e0d2b8 0%, #cbb896 100%);
+      border-color: #b5a078;
+    }
+    #viewport.table-linen #board {
+      background: #c9b896;
+      border-color: #a89068;
+      box-shadow: inset 0 0 20px rgba(80,60,30,0.2);
+    }
+    #viewport.table-papyrus {
+      background-color: #e8d5a3;
+      background-image:
+        radial-gradient(ellipse at 20% 30%, rgba(180,140,60,0.15) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 70%, rgba(140,100,40,0.12) 0%, transparent 35%),
+        repeating-linear-gradient(92deg, transparent, transparent 12px, rgba(160,120,50,0.06) 12px, rgba(160,120,50,0.06) 13px),
+        linear-gradient(175deg, #f0e0b8 0%, #d4bc82 50%, #e2ce9a 100%);
+      border-color: #c4a86a;
+    }
+    #viewport.table-papyrus #board {
+      background: #dcc890;
+      border-color: #b89860;
+      box-shadow: inset 0 0 18px rgba(100,70,20,0.18);
+    }
+    #viewport.table-dotted {
+      background-color: #f2efe6;
+      background-image: radial-gradient(circle, #c5c0b0 0.9px, transparent 1.1px);
+      background-size: 12px 12px;
+      border-color: #c8c2b4;
+    }
+    #viewport.table-dotted #board {
+      background: #e8e4d8;
+      border-color: #b8b0a0;
+      box-shadow: inset 0 0 16px rgba(0,0,0,0.08);
+    }
+    #viewport.table-cork {
+      background-color: #c4a574;
+      background-image:
+        radial-gradient(ellipse 3px 2px at 20% 30%, rgba(90,60,30,0.25) 0%, transparent 100%),
+        radial-gradient(ellipse 2px 3px at 60% 50%, rgba(90,60,30,0.2) 0%, transparent 100%),
+        radial-gradient(ellipse 2px 2px at 40% 70%, rgba(140,100,50,0.3) 0%, transparent 100%),
+        radial-gradient(ellipse 3px 2px at 80% 20%, rgba(90,60,30,0.22) 0%, transparent 100%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='4' cy='7' r='1.2' fill='%238a6235' fill-opacity='0.25'/%3E%3Ccircle cx='14' cy='4' r='0.9' fill='%236a4828' fill-opacity='0.2'/%3E%3Ccircle cx='10' cy='15' r='1.1' fill='%239a7040' fill-opacity='0.22'/%3E%3Ccircle cx='17' cy='12' r='0.8' fill='%237a5430' fill-opacity='0.2'/%3E%3C/svg%3E");
+      border-color: #a88858;
+    }
+    #viewport.table-cork #board {
+      background: #b89560;
+      border-color: #967848;
+      box-shadow: inset 0 0 20px rgba(60,40,15,0.25);
+    }
+    #viewport.table-wood {
+      background-color: #3d2918;
+      background-image:
+        repeating-linear-gradient(90deg,
+          transparent 0px, transparent 8px,
+          rgba(0,0,0,0.06) 8px, rgba(0,0,0,0.06) 9px),
+        repeating-linear-gradient(90deg,
+          transparent 0px, transparent 28px,
+          rgba(255,220,160,0.03) 28px, rgba(255,220,160,0.03) 30px),
+        linear-gradient(90deg, #4a3220 0%, #3d2918 20%, #5a3d28 40%, #3a2615 60%, #4e3422 80%, #3d2918 100%);
+      border-color: #5a4030;
+    }
+    #viewport.table-wood #board {
+      background: #2e1e12;
+      border-color: #6a4a30;
+      box-shadow: inset 0 0 24px rgba(0,0,0,0.4);
+    }
     #viewport.panning { cursor: grabbing; }
     #world {
       position: absolute;
