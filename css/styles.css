@@ -297,8 +297,8 @@
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
-      opacity: 0.10;
-      filter: blur(32px) saturate(1.05);
+      opacity: var(--mimic-opacity, 0.10);
+      filter: blur(var(--mimic-blur, 32px)) saturate(1.05);
       pointer-events: none;
       z-index: 0;
     }
@@ -594,4 +594,28 @@
       border-color: #e07070 !important;
       color: #ffe0e0 !important;
       box-shadow: 0 0 0 1px rgba(224,112,112,0.35);
+    }
+
+    .timer-display {
+      position: absolute;
+      right: 12px;
+      bottom: 8px;
+      font-size: 0.8rem;
+      color: #aaa;
+      z-index: 30;
+      pointer-events: none;
+      background: rgba(0,0,0,0.45);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      letter-spacing: 0.04em;
+    }
+    .timer-display.paused { color: #888; opacity: 0.7; }
+    .timer-display.running { color: #c9e8c0; }
+    .win-time {
+      font-size: 1.15rem;
+      color: var(--accent, #c9a227);
+      font-variant-numeric: tabular-nums;
+      margin: 4px 0 8px;
     }

@@ -1,9 +1,8 @@
 /**
- * Art Jigsaw — default config (v0.4.0)
- * Autosave + Cheat mode
+ * Art Jigsaw — default config (v0.4.7)
  */
 window.JIGSAW_DEFAULTS = {
-  version: '0.4.5',
+  version: '0.4.7',
 
   tabScale: 2,
   tabBaseFactor: 0.55,
@@ -30,10 +29,14 @@ window.JIGSAW_DEFAULTS = {
   reduceMotion: false,
   createBatchSize: 256,
 
-  /** Viewport table surface: default|slate-plus|mimic|felt|linen|papyrus|dotted|cork|wood */
+  /** Viewport table surface */
   tableStyle: 'default',
+  /** Mimic table: image ghost opacity 0–1 */
+  mimicOpacity: 0.5,
+  /** Mimic table: blur in px */
+  mimicBlur: 75,
 
-  /** Cheat auto-place duration per group (ms). Lower = faster */
+  /** Cheat auto-place duration per group (ms) */
   cheatDuration: 550,
   /** Autosave debounce (ms) after moves */
   autosaveDebounce: 900

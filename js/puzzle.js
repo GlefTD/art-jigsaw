@@ -218,39 +218,59 @@
     /** One shared background for all pieces — avoids N copies of a multi-MB data URL in the DOM. */
     /** Returns a short URL (blob: or http:) shared by every piece. Never a multi-MB data-URL. */
     function setSharedPuzzleImage(imageOrUrl) {
-      // Keep existing object URL if still valid and no new blob
+      // Always rebuild blob URL when sessionImgBlob is set (new image must not reuse old URL)
       let url = '';
       if (sessionImgBlob) {
-        // Reuse one object URL for the session blob
-        if (!sessionImgObjectUrl || !sessionImgObjectUrl.startsWith('blob:')) {
-          revokePuzzleObjectUrl();
-          sessionImgObjectUrl = URL.createObjectURL(sessionImgBlob);
-        }
+        revokePuzzleObjectUrl();
+        sessionImgObjectUrl = URL.createObjectURL(sessionImgBlob);
         url = sessionImgObjectUrl;
       } else if (typeof imageOrUrl === 'string' && imageOrUrl && !imageOrUrl.startsWith('data:')) {
+        revokePuzzleObjectUrl();
         url = imageOrUrl;
         sessionImgObjectUrl = url;
       } else if (imageOrUrl && imageOrUrl.src && !String(imageOrUrl.src).startsWith('data:')) {
+        revokePuzzleObjectUrl();
         url = imageOrUrl.src;
         sessionImgObjectUrl = url;
-      } else if (imageOrUrl && imageOrUrl.src && String(imageOrUrl.src).startsWith('data:')) {
-        // Last resort: convert data-URL image to blob URL once
+      } else if (imageOrUrl && imageOrUrl.src) {
         revokePuzzleObjectUrl();
-        // draw not available sync — keep data url only if tiny; otherwise empty until blob ready
         url = imageOrUrl.src;
         sessionImgObjectUrl = url;
       }
+      const vp = document.getElementById('viewport');
       if (url) {
-        const cssUrl = 'url("' + url.replace(/"/g, '\"') + '")';
+        const cssUrl = 'url("' + String(url).replace(/"/g, '\\"') + '")';
         world.style.setProperty('--puzzle-img', cssUrl);
-        const vp = document.getElementById('viewport');
         if (vp) vp.style.setProperty('--mimic-img', cssUrl);
       } else {
         world.style.setProperty('--puzzle-img', 'none');
-        const vp = document.getElementById('viewport');
         if (vp) vp.style.setProperty('--mimic-img', 'none');
       }
+      applyMimicVars();
+      requestAnimationFrame(() => { if (typeof refreshMimicLayer === 'function') refreshMimicLayer(); });
       return url || '';
+    }
+
+    function applyMimicVars() {
+      const vp = document.getElementById('viewport');
+      if (!vp) return;
+      const op = (CFG && CFG.mimicOpacity != null) ? CFG.mimicOpacity : 0.5;
+      const bl = (CFG && CFG.mimicBlur != null) ? CFG.mimicBlur : 75;
+      vp.style.setProperty('--mimic-opacity', String(op));
+      vp.style.setProperty('--mimic-blur', bl + 'px');
+    }
+
+    function refreshMimicLayer() {
+      const vp = document.getElementById('viewport');
+      if (!vp) return;
+      applyMimicVars();
+      if (!vp.classList.contains('table-mimic')) return;
+      const url = vp.style.getPropertyValue('--mimic-img') || '';
+      vp.classList.remove('table-mimic');
+      void vp.offsetWidth;
+      vp.classList.add('table-mimic');
+      if (url) vp.style.setProperty('--mimic-img', url);
+      applyMimicVars();
     }
 
     /** Downscale large images before IDB storage (keeps resume light). */
@@ -284,15 +304,30 @@
       const fileInput = document.getElementById('imageFile');
       const urlInput = document.getElementById('imageUrl');
       let src = null;
+      let fromFile = false;
 
+      // Prefer explicit file if present; otherwise URL
       if (fileInput.files && fileInput.files[0]) {
         src = URL.createObjectURL(fileInput.files[0]);
+        fromFile = true;
       } else if (urlInput.value.trim()) {
         src = urlInput.value.trim();
       } else {
         statusEl.textContent = 'Please provide an image URL or choose a file.';
         return;
       }
+
+      // Full reset before loading a new image
+      if (typeof stopCheat === 'function') stopCheat();
+      winOverlay.classList.remove('show');
+      revokePuzzleObjectUrl();
+      sessionImgBlob = null;
+      sessionImgObjectUrl = null;
+      sessionImgRemoteUrl = null;
+      sessionImgIsRemote = false;
+      idbImageWritten = false;
+      placementDirty = false;
+      img = null;
 
       startBtn.disabled = true;
       statusEl.textContent = 'Loading image…';
@@ -359,6 +394,10 @@
       hintBtn.disabled = false;
       resetBtn.disabled = false;
       if (cheatBtn) cheatBtn.disabled = false;
+      if (typeof resetTimer === 'function') resetTimer();
+      requestAnimationFrame(() => {
+        if (typeof refreshMimicLayer === 'function') refreshMimicLayer();
+      });
     }
 
     async function createPuzzle(restoreState) {
@@ -561,6 +600,10 @@
       statusEl.textContent = restoreState
         ? `Session restored — ${pieces.filter(p => p.placed).length}/${pieces.length} placed.`
         : `Puzzle ready — ${cols * rows} pieces. Autosave is on.`;
+      requestAnimationFrame(() => {
+        if (img) setSharedPuzzleImage(img);
+        if (typeof refreshMimicLayer === 'function') refreshMimicLayer();
+      });
     }
 
     /**
@@ -850,12 +893,107 @@
       };
     }
 
+
+    // ========== Play timer (v0.4.7) ==========
+    let timerAccumMs = 0;
+    let timerRunning = false;
+    let timerStarted = false;
+    let timerSegmentStart = 0;
+    let lastInteractionAt = 0;
+    let idleWatchId = null;
+    const IDLE_MS = 60000;
+
+    function formatTime(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+      return m + ':' + String(sec).padStart(2, '0');
+    }
+
+    function getElapsedMs() {
+      let total = timerAccumMs;
+      if (timerRunning && timerSegmentStart) total += Date.now() - timerSegmentStart;
+      return Math.max(0, total);
+    }
+
+    function updateTimerDisplay() {
+      const el = document.getElementById('timerDisplay');
+      if (!el) return;
+      el.textContent = formatTime(getElapsedMs());
+      el.classList.toggle('running', !!timerRunning);
+      el.classList.toggle('paused', !!(timerStarted && !timerRunning));
+    }
+
+    function resetTimer() {
+      timerAccumMs = 0;
+      timerRunning = false;
+      timerStarted = false;
+      timerSegmentStart = 0;
+      lastInteractionAt = 0;
+      if (idleWatchId) { clearInterval(idleWatchId); idleWatchId = null; }
+      updateTimerDisplay();
+    }
+
+    function pauseTimerForIdle() {
+      if (!timerRunning) return;
+      const now = Date.now();
+      if (timerSegmentStart) {
+        timerAccumMs += now - timerSegmentStart;
+        timerSegmentStart = 0;
+      }
+      timerAccumMs = Math.max(0, timerAccumMs - IDLE_MS);
+      timerRunning = false;
+      updateTimerDisplay();
+    }
+
+    function noteInteraction(isPieceMove) {
+      const now = Date.now();
+      if (!timerStarted) {
+        if (!isPieceMove) return;
+        timerStarted = true;
+        timerRunning = true;
+        timerSegmentStart = now;
+        lastInteractionAt = now;
+        if (!idleWatchId) idleWatchId = setInterval(watchIdle, 1000);
+        updateTimerDisplay();
+        return;
+      }
+      if (!timerRunning) {
+        timerRunning = true;
+        timerSegmentStart = now;
+      }
+      lastInteractionAt = now;
+      updateTimerDisplay();
+    }
+
+    function watchIdle() {
+      if (!timerStarted) return;
+      updateTimerDisplay();
+      if (timerRunning && (Date.now() - lastInteractionAt) >= IDLE_MS) {
+        pauseTimerForIdle();
+      }
+    }
+
+    function stopTimerForWin() {
+      if (timerRunning && timerSegmentStart) {
+        timerAccumMs += Date.now() - timerSegmentStart;
+        timerSegmentStart = 0;
+      }
+      timerRunning = false;
+      if (idleWatchId) { clearInterval(idleWatchId); idleWatchId = null; }
+      updateTimerDisplay();
+      return getElapsedMs();
+    }
+
     function onPiecePointerDown(e, piece) {
       if (piece.placed) return;
       // Accept mouse left button and any touch/pen
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
+      noteInteraction(true);
 
       // Cancel viewport pan if we started dragging a piece
       isPanning = false;
@@ -1052,6 +1190,9 @@
     function checkWin() {
       const allPlaced = pieces.every(p => p.placed);
       if (allPlaced) {
+        const elapsed = stopTimerForWin();
+        const wt = document.getElementById('winTime');
+        if (wt) wt.textContent = 'Time spent: ' + formatTime(elapsed);
         fitToView();
         setTimeout(() => winOverlay.classList.add('show'), 320);
       }
@@ -1081,6 +1222,7 @@
       // Middle mouse always pans
       if (e.button === 1) {
         e.preventDefault();
+        noteInteraction(false);
         isPanning = true;
         viewport.classList.add('panning');
         panStartX = e.clientX;
@@ -1175,6 +1317,7 @@
     // Zoom with wheel (desktop)
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
+      noteInteraction(false);
       const rect = viewport.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
@@ -1466,6 +1609,8 @@
         embossStrength: 'cfg_embossStrength',
         shadowStrength: 'cfg_shadowStrength',
         shadowBlur: 'cfg_shadowBlur',
+        mimicOpacity: 'cfg_mimicOpacity',
+        mimicBlur: 'cfg_mimicBlur',
         createBatchSize: 'cfg_createBatchSize',
         cheatDuration: 'cfg_cheatDuration',
         reduceMotion: 'cfg_reduceMotion'
@@ -1519,9 +1664,11 @@
           if (span) span.textContent = el.type === 'checkbox' ? '' : el.value;
           if (id === 'cfg_accent' || id === 'cfg_bg' || id === 'cfg_panel' ||
               id === 'cfg_embossStrength' || id === 'cfg_shadowStrength' || id === 'cfg_shadowBlur' ||
+              id === 'cfg_mimicOpacity' || id === 'cfg_mimicBlur' ||
               id === 'cfg_reduceMotion') {
             readConfigForm();
             applyThemeFromConfig();
+            if (typeof applyMimicVars === 'function') applyMimicVars();
           }
         });
       });
@@ -1790,6 +1937,7 @@
         if (ps) ps.value = window._pieceShape;
 
         await createPuzzle(meta);
+        if (typeof resetTimer === "function") resetTimer();
         hideProgress();
         startBtn.disabled = false;
         fitBtn.disabled = false;
@@ -1966,5 +2114,23 @@
       });
     }
 
-    console.info('[Art Jigsaw] v0.4.5 · slate-plus · mimic-blur');
+    
+    (function bindImageInputs() {
+      const fileInput = document.getElementById('imageFile');
+      const urlInput = document.getElementById('imageUrl');
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files && fileInput.files[0] && urlInput) urlInput.value = '';
+        });
+      }
+      if (urlInput) {
+        urlInput.addEventListener('input', () => {
+          if (urlInput.value.trim() && fileInput) {
+            try { fileInput.value = ''; } catch (_) {}
+          }
+        });
+      }
+    })();
+
+    console.info('[Art Jigsaw] v0.4.7 · mimic-refresh · play-timer');
 
