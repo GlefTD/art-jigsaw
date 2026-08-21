@@ -395,6 +395,7 @@
       resetBtn.disabled = false;
       if (cheatBtn) cheatBtn.disabled = false;
       if (typeof resetTimer === 'function') resetTimer();
+      if (typeof resetCheatStats === 'function') resetCheatStats();
       requestAnimationFrame(() => {
         if (typeof refreshMimicLayer === 'function') refreshMimicLayer();
       });
@@ -894,7 +895,7 @@
     }
 
 
-    // ========== Play timer (v0.4.7) ==========
+    // ========== Play timer (v0.4.11) ==========
     let timerAccumMs = 0;
     let timerRunning = false;
     let timerStarted = false;
@@ -987,6 +988,117 @@
       return getElapsedMs();
     }
 
+
+    // ========== Wiggle cheat (Shift + hold + shake / 5× click) ==========
+    let wiggleSamples = [];
+    let wiggleArmed = false;
+    let wiggleTriggered = false;
+    let wigglePointerId = null;
+    let shiftClickPiece = null;
+    let shiftClickCount = 0;
+    let shiftClickLast = 0;
+
+    function clearWiggleWatch() {
+      wiggleSamples = [];
+      wiggleArmed = false;
+      wiggleTriggered = false;
+      wigglePointerId = null;
+    }
+
+    /** Looser shake detector: path zig-zag + total travel. */
+    function detectShake(samples) {
+      if (samples.length < 5) return false;
+      let reversals = 0;
+      let travel = 0;
+      let prevDx = 0, prevDy = 0;
+      const minAmp = 4; // screen px between samples
+      for (let i = 1; i < samples.length; i++) {
+        const dx = samples[i].x - samples[i - 1].x;
+        const dy = samples[i].y - samples[i - 1].y;
+        const dist = Math.hypot(dx, dy);
+        travel += dist;
+        if (dist < minAmp) continue;
+        if (prevDx !== 0 && dx * prevDx < 0) reversals++;
+        if (prevDy !== 0 && dy * prevDy < 0) reversals++;
+        if (Math.abs(dx) >= minAmp * 0.5) prevDx = dx;
+        if (Math.abs(dy) >= minAmp * 0.5) prevDy = dy;
+      }
+      // 3 direction changes + some travel, OR lots of travel with 2 reversals
+      return (reversals >= 3 && travel > 40) || (reversals >= 2 && travel > 90);
+    }
+
+    function applyWiggleToPiece(p, intensity) {
+      p.el.classList.add('wiggling');
+      const wx = intensity + 'px';
+      const wy = Math.max(2, intensity * 0.75) + 'px';
+      p.el.style.setProperty('--wx', wx);
+      p.el.style.setProperty('--wy', wy);
+      const vis = p.el.querySelector('.piece-visual');
+      if (vis) {
+        vis.style.setProperty('--wx', wx);
+        vis.style.setProperty('--wy', wy);
+      }
+    }
+
+    function pieceAt(r, c) {
+      return pieces.find(p => p.r === r && p.c === c) || null;
+    }
+
+    /** Orthogonal grid neighbours of a piece (the ones that can interlock with it). */
+    function gridNeighbors(p) {
+      const out = [];
+      const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      for (const [dr, dc] of deltas) {
+        const n = pieceAt(p.r + dr, p.c + dc);
+        if (n) out.push(n);
+      }
+      return out;
+    }
+
+    function triggerGroupWiggle(heldPiece) {
+      const intensity = (CFG && CFG.wiggleIntensity) || 6;
+      const duration = (CFG && CFG.wiggleDuration) || 2000;
+
+      // Collect: held piece + its already-snapped group + grid neighbours + each neighbour's group
+      const targets = new Set();
+      const seed = heldPiece.group && heldPiece.group.length ? heldPiece.group : [heldPiece];
+      seed.forEach(p => {
+        targets.add(p);
+        gridNeighbors(p).forEach(n => {
+          targets.add(n);
+          if (n.group) n.group.forEach(m => targets.add(m));
+        });
+      });
+
+      targets.forEach(p => {
+        const strong = (p !== heldPiece);
+        applyWiggleToPiece(p, strong ? intensity : Math.max(2, intensity * 0.55));
+      });
+
+      statusEl.textContent = 'Wiggle! ×' + targets.size + ' (neighbours + groups)';
+      setTimeout(() => {
+        targets.forEach(p => p.el.classList.remove('wiggling'));
+      }, duration);
+    }
+
+    /** Shift+click same piece 5× quickly → wiggle */
+    function noteShiftClick(piece) {
+      const now = performance.now();
+      if (shiftClickPiece === piece && (now - shiftClickLast) < 900) {
+        shiftClickCount++;
+      } else {
+        shiftClickPiece = piece;
+        shiftClickCount = 1;
+      }
+      shiftClickLast = now;
+      if (shiftClickCount >= 5) {
+        shiftClickCount = 0;
+        triggerGroupWiggle(piece);
+        return true;
+      }
+      return false;
+    }
+
     function onPiecePointerDown(e, piece) {
       if (piece.placed) return;
       // Accept mouse left button and any touch/pen
@@ -994,6 +1106,19 @@
       e.preventDefault();
       e.stopPropagation();
       noteInteraction(true);
+
+      // Wiggle cheat: Shift + hold + shake, or Shift + 5 clicks
+      clearWiggleWatch();
+      if (e.shiftKey && !piece.placed) {
+        if (noteShiftClick(piece)) {
+          // 5-click path already triggered
+        } else {
+          wiggleArmed = true;
+          wiggleTriggered = false;
+          wigglePointerId = e.pointerId;
+          wiggleSamples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+        }
+      }
 
       // Cancel viewport pan if we started dragging a piece
       isPanning = false;
@@ -1024,6 +1149,19 @@
     }
 
     function onPointerMove(e) {
+      if (wiggleArmed && !wiggleTriggered) {
+        wiggleSamples.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+        if (wiggleSamples.length > 60) wiggleSamples.shift();
+        // drop old samples (>800ms)
+        const cutoff = performance.now() - 800;
+        while (wiggleSamples.length && wiggleSamples[0].t < cutoff) wiggleSamples.shift();
+        if (detectShake(wiggleSamples)) {
+          wiggleTriggered = true;
+          const held = dragPiece || null;
+          if (held) triggerGroupWiggle(held);
+          clearWiggleWatch();
+        }
+      }
       if (isPanning) {
         const dx = e.clientX - panStartX;
         const dy = e.clientY - panStartY;
@@ -1044,6 +1182,7 @@
     }
 
     function onPointerUp(e) {
+      clearWiggleWatch();
       if (isPanning) {
         isPanning = false;
         viewport.classList.remove('panning');
@@ -1193,6 +1332,16 @@
         const elapsed = stopTimerForWin();
         const wt = document.getElementById('winTime');
         if (wt) wt.textContent = 'Time spent: ' + formatTime(elapsed);
+        const wc = document.getElementById('winCheat');
+        if (wc) {
+          if (cheatPlaceCount > 0) {
+            wc.hidden = false;
+            wc.textContent = 'Cheat! activated ' + cheatPlaceCount + ' times!';
+          } else {
+            wc.hidden = true;
+            wc.textContent = '';
+          }
+        }
         fitToView();
         setTimeout(() => winOverlay.classList.add('show'), 320);
       }
@@ -1613,6 +1762,9 @@
         mimicBlur: 'cfg_mimicBlur',
         createBatchSize: 'cfg_createBatchSize',
         cheatDuration: 'cfg_cheatDuration',
+        cheatStyle: 'cfg_cheatStyle',
+        wiggleIntensity: 'cfg_wiggleIntensity',
+        wiggleDuration: 'cfg_wiggleDuration',
         reduceMotion: 'cfg_reduceMotion'
       };
 
@@ -1637,7 +1789,7 @@
           if (!el) return;
           if (el.type === 'checkbox') CFG[k] = el.checked;
           else if (el.type === 'color') CFG[k] = el.value;
-          else if (el.tagName === 'SELECT') CFG[k] = parseInt(el.value, 10);
+          else if (el.tagName === 'SELECT') CFG[k] = el.value; // string (cheatStyle etc.)
           else CFG[k] = parseFloat(el.value);
         });
       }
@@ -1938,6 +2090,7 @@
 
         await createPuzzle(meta);
         if (typeof resetTimer === "function") resetTimer();
+        if (typeof resetCheatStats === "function") resetCheatStats();
         hideProgress();
         startBtn.disabled = false;
         fitBtn.disabled = false;
@@ -1956,14 +2109,62 @@
     }
 
     // ========== Cheat mode ==========
+    let cheatPlaceCount = 0;       // pieces locked via cheat this puzzle
+    let cheatFastOverride = null;  // temporary ms override (Shift+Cheat)
+
     function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    function resetCheatStats() {
+      cheatPlaceCount = 0;
+      cheatFastOverride = null;
+    }
 
     function stopCheat() {
       cheatActive = false;
+      cheatFastOverride = null;
       if (cheatBtn) {
         cheatBtn.classList.remove('active');
         cheatBtn.textContent = 'Cheat!';
       }
+    }
+
+    /** Clockwise spiral indices from top-left of the grid. */
+    function buildSpiralRanks(R, C) {
+      const rank = Array.from({ length: R }, () => Array(C).fill(1e9));
+      let top = 0, bot = R - 1, left = 0, right = C - 1, n = 0;
+      while (top <= bot && left <= right) {
+        for (let c = left; c <= right; c++) rank[top][c] = n++;
+        top++;
+        for (let r = top; r <= bot; r++) rank[r][right] = n++;
+        right--;
+        if (top <= bot) {
+          for (let c = right; c >= left; c--) rank[bot][c] = n++;
+          bot--;
+        }
+        if (left <= right) {
+          for (let r = bot; r >= top; r--) rank[r][left] = n++;
+          left++;
+        }
+      }
+      return rank;
+    }
+
+    function pickCheatGroup(groups) {
+      const style = (CFG && CFG.cheatStyle) || 'largest';
+      if (style === 'circular' && rows && cols) {
+        const rank = buildSpiralRanks(rows, cols);
+        // Prefer the free group whose best (lowest) spiral rank is smallest
+        groups.sort((a, b) => {
+          const ra = Math.min(...a.map(p => rank[p.r][p.c]));
+          const rb = Math.min(...b.map(p => rank[p.r][p.c]));
+          if (ra !== rb) return ra - rb;
+          return a.length - b.length; // smaller clusters first within same ring
+        });
+        return groups[0];
+      }
+      // default: larger groups first
+      groups.sort((a, b) => b.length - a.length);
+      return groups[0];
     }
 
     function animateGroupHome(group, duration) {
@@ -2000,7 +2201,7 @@
               p.el.classList.add('snapped');
               p.el.style.zIndex = 5;
             });
-            // Merge all placed group members into one shared group array
+            cheatPlaceCount += starts.length;
             const merged = [];
             const seen = new Set();
             starts.forEach(({ p }) => {
@@ -2019,8 +2220,9 @@
     }
 
     async function runCheatLoop() {
-      const duration = Math.max(10, (CFG && CFG.cheatDuration) || 550);
+      const baseDur = Math.max(10, (CFG && CFG.cheatDuration) || 550);
       while (cheatActive) {
+        const duration = Math.max(10, cheatFastOverride != null ? cheatFastOverride : baseDur);
         const free = pieces.filter(p => !p.placed);
         if (!free.length) {
           stopCheat();
@@ -2028,7 +2230,6 @@
           scheduleAutosave(true);
           break;
         }
-        // Unique free groups — place one group at a time
         const seen = new Set();
         const groups = [];
         free.forEach(p => {
@@ -2036,9 +2237,7 @@
           seen.add(p.group);
           groups.push(p.group);
         });
-        // Prefer larger groups first for nicer assembly
-        groups.sort((a, b) => b.length - a.length);
-        const g = groups[0];
+        const g = pickCheatGroup(groups);
         const ok = await animateGroupHome(g, duration);
         if (!ok || !cheatActive) break;
         updateStatus();
@@ -2047,7 +2246,7 @@
       scheduleAutosave(true);
     }
 
-    function toggleCheat() {
+    function toggleCheat(e) {
       if (!pieces.length) return;
       if (cheatActive) {
         stopCheat();
@@ -2055,16 +2254,46 @@
         scheduleAutosave(true);
         return;
       }
+      // Start at normal speed; hold Shift while running for turbo
+      cheatFastOverride = (e && e.shiftKey) ? 10 : null;
       cheatActive = true;
       if (cheatBtn) {
         cheatBtn.classList.add('active');
         cheatBtn.textContent = 'Stop Cheat';
       }
-      statusEl.textContent = 'Cheat mode — pieces sliding home…';
+      statusEl.textContent = cheatFastOverride
+        ? 'Cheat TURBO — release Shift for normal speed…'
+        : 'Cheat mode — hold Shift for turbo…';
       runCheatLoop();
     }
 
     if (cheatBtn) cheatBtn.addEventListener('click', toggleCheat);
+
+    // While cheat is running: Shift held = turbo (10ms), released = normal config speed
+    function syncCheatTurboFromShift(e) {
+      if (!cheatActive) return;
+      const shiftDown = e.shiftKey || e.type === 'keydown';
+      if (e.type === 'keyup' && (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) {
+        cheatFastOverride = null;
+        statusEl.textContent = 'Cheat mode — hold Shift for turbo…';
+        return;
+      }
+      if (e.type === 'keydown' && (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) {
+        if (e.repeat) return;
+        cheatFastOverride = 10;
+        statusEl.textContent = 'Cheat TURBO (10ms) — release Shift for normal speed…';
+      }
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        syncCheatTurboFromShift(e);
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        syncCheatTurboFromShift(e);
+      }
+    });
 
     // Stop cheat if user grabs a piece
     const _origOnPiecePointerDown = typeof onPiecePointerDown === 'function' ? null : null;
@@ -2132,5 +2361,5 @@
       }
     })();
 
-    console.info('[Art Jigsaw] v0.4.7 · mimic-refresh · play-timer');
+    console.info('[Art Jigsaw] v0.4.11 · wiggle-neighbours');
 

@@ -80,7 +80,7 @@
       <button id="arrangeBtn" class="secondary" disabled title="Slightly separate overlapping free pieces without breaking groups">Unstack</button>
       <button id="hintBtn" class="secondary" disabled>Hint</button>
       <button id="resetBtn" class="secondary" disabled>Rescatter</button>
-      <button id="cheatBtn" class="secondary cheat-btn" disabled title="Auto-place remaining pieces (toggle)">Cheat!</button>
+      <button id="cheatBtn" class="secondary cheat-btn" disabled title="Toggle auto-place. While active, hold Shift for turbo speed.">Cheat!</button>
     </div>
   </div>
   <div id="status">Load an image then Start. Desktop: scroll zoom · middle-click pan. Touch: drag pieces · 1-finger pan · pinch zoom.</div>
@@ -91,13 +91,14 @@
     <img id="hint-img" alt="hint">
     <div class="zoom-info" id="zoomInfo">100%</div>
     <div class="timer-display" id="timerDisplay">0:00</div>
-    <div class="version-tag" id="versionTag">v0.4.7</div>
+    <div class="version-tag" id="versionTag">v0.4.11</div>
   </div>
   <!-- Outside #viewport so pan/touch never steals the Continue click -->
   <div id="win-overlay">
     <h2>Puzzle Complete!</h2>
     <p>Enjoy the finished piece.</p>
     <p id="winTime" class="win-time">Time spent: —</p>
+    <p id="winCheat" class="win-cheat" hidden>Cheat! activated 0 times!</p>
     <button type="button" id="closeWin">Continue</button>
   </div>
   <div id="progress-overlay" hidden>
@@ -149,6 +150,14 @@
           <label>Snap distance <input type="range" id="cfg_snapFactor" min="0.2" max="0.6" step="0.02"><span data-for="cfg_snapFactor"></span></label>
           <label>Scatter spread <input type="range" id="cfg_scatterSpread" min="0.15" max="0.7" step="0.05"><span data-for="cfg_scatterSpread"></span></label>
           <label>Cheat slide speed (ms) <input type="range" id="cfg_cheatDuration" min="10" max="2000" step="10"><span data-for="cfg_cheatDuration"></span></label>
+          <label>Cheat style
+            <select id="cfg_cheatStyle">
+              <option value="largest">Largest groups first</option>
+              <option value="circular">Circular (clockwise)</option>
+            </select>
+          </label>
+          <label>Wiggle intensity (px) <input type="range" id="cfg_wiggleIntensity" min="2" max="20" step="1"><span data-for="cfg_wiggleIntensity"></span></label>
+          <label>Wiggle duration (ms) <input type="range" id="cfg_wiggleDuration" min="500" max="5000" step="100"><span data-for="cfg_wiggleDuration"></span></label>
         </fieldset>
         <fieldset>
           <legend>Look</legend>

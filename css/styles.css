@@ -619,3 +619,20 @@
       font-variant-numeric: tabular-nums;
       margin: 4px 0 8px;
     }
+
+    .win-cheat {
+      font-size: 0.95rem;
+      color: #e8a0a0;
+      margin: 2px 0 10px;
+    }
+    @keyframes piece-wiggle {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      25% { transform: translate(var(--wx, 4px), var(--wy, -3px)) rotate(-2.5deg); }
+      50% { transform: translate(calc(var(--wx, 4px) * -1), var(--wy, 3px)) rotate(2deg); }
+      75% { transform: translate(var(--wy, 2px), calc(var(--wx, 4px) * -0.6)) rotate(-1.5deg); }
+    }
+    .piece.wiggling .piece-visual {
+      animation: piece-wiggle 0.11s ease-in-out infinite;
+      --wx: 5px;
+      --wy: 4px;
+    }
