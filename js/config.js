@@ -1,8 +1,8 @@
 /**
- * Art Jigsaw — default config (v0.4.11)
+ * Art Jigsaw — default config (v0.4.12)
  */
 window.JIGSAW_DEFAULTS = {
-  version: '0.4.11',
+  version: '0.4.12',
 
   tabScale: 2,
   tabBaseFactor: 0.55,
@@ -33,14 +33,19 @@ window.JIGSAW_DEFAULTS = {
   mimicOpacity: 0.5,
   mimicBlur: 75,
 
-  /** Cheat auto-place duration per group (ms) */
   cheatDuration: 550,
-  /** Cheat placement order: largest | circular */
   cheatStyle: 'largest',
-  /** Wiggle cheat intensity in px */
+
+  /** Wiggle visual amplitude in px */
   wiggleIntensity: 6,
-  /** Wiggle cheat duration in ms */
-  wiggleDuration: 2000,
+  /** How long neighbours wiggle (seconds) */
+  wiggleDurationSec: 2,
+  /** Shake ease: 0.1 hard → 1.0 very easy (gratteux mode) */
+  wiggleSensitivity: 0.55,
+  /** Same-piece taps needed to trigger (2–20) */
+  wiggleTapCount: 5,
+  /** Second-finger arm radius in screen px */
+  wiggleTouchRadius: 130,
 
   autosaveDebounce: 900
 };

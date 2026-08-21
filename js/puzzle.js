@@ -895,7 +895,7 @@
     }
 
 
-    // ========== Play timer (v0.4.11) ==========
+    // ========== Play timer (v0.4.12) ==========
     let timerAccumMs = 0;
     let timerRunning = false;
     let timerStarted = false;
@@ -989,42 +989,59 @@
     }
 
 
-    // ========== Wiggle cheat (Shift + hold + shake / 5× click) ==========
+    // ========== Wiggle cheat (mouse Shift / touch 2-finger / multi-tap) ==========
     let wiggleSamples = [];
     let wiggleArmed = false;
     let wiggleTriggered = false;
     let wigglePointerId = null;
+    let wiggleHoldX = 0;
+    let wiggleHoldY = 0;
+    let wiggleTouchArmed = false; // second finger within radius (touch path)
     let shiftClickPiece = null;
     let shiftClickCount = 0;
     let shiftClickLast = 0;
+    let wiggleCheatCount = 0;
 
     function clearWiggleWatch() {
       wiggleSamples = [];
       wiggleArmed = false;
       wiggleTriggered = false;
       wigglePointerId = null;
+      wiggleTouchArmed = false;
     }
 
-    /** Looser shake detector: path zig-zag + total travel. */
+    function wiggleSens() {
+      return Math.max(0.1, Math.min(1, (CFG && CFG.wiggleSensitivity) != null ? CFG.wiggleSensitivity : 0.55));
+    }
+
+    /**
+     * Lottery-scratch style shake: left-right reversals.
+     * Higher sensitivity = fewer / smaller moves needed.
+     */
     function detectShake(samples) {
-      if (samples.length < 5) return false;
+      if (samples.length < 4) return false;
+      const sens = wiggleSens();
+      const minAmp = 14 - sens * 11;          // ~3–13 px between samples
+      const needRev = Math.max(2, Math.round(6 - sens * 4)); // 2–6 reversals
+      const needTravel = 150 - sens * 110;    // ~40–140 px total
       let reversals = 0;
       let travel = 0;
-      let prevDx = 0, prevDy = 0;
-      const minAmp = 4; // screen px between samples
+      let prevDx = 0;
       for (let i = 1; i < samples.length; i++) {
         const dx = samples[i].x - samples[i - 1].x;
         const dy = samples[i].y - samples[i - 1].y;
         const dist = Math.hypot(dx, dy);
         travel += dist;
-        if (dist < minAmp) continue;
-        if (prevDx !== 0 && dx * prevDx < 0) reversals++;
-        if (prevDy !== 0 && dy * prevDy < 0) reversals++;
-        if (Math.abs(dx) >= minAmp * 0.5) prevDx = dx;
-        if (Math.abs(dy) >= minAmp * 0.5) prevDy = dy;
+        // Favour horizontal scratch (gratteux)
+        if (Math.abs(dx) < minAmp * 0.6 && Math.abs(dy) < minAmp) continue;
+        const dominant = Math.abs(dx) >= Math.abs(dy) * 0.5 ? dx : dy;
+        if (prevDx !== 0 && dominant * prevDx < 0 && Math.abs(dominant) >= minAmp * 0.6) {
+          reversals++;
+        }
+        if (Math.abs(dominant) >= minAmp * 0.5) prevDx = dominant;
       }
-      // 3 direction changes + some travel, OR lots of travel with 2 reversals
-      return (reversals >= 3 && travel > 40) || (reversals >= 2 && travel > 90);
+      return (reversals >= needRev && travel > needTravel * 0.45) ||
+             (reversals >= Math.max(2, needRev - 1) && travel > needTravel);
     }
 
     function applyWiggleToPiece(p, intensity) {
@@ -1044,11 +1061,9 @@
       return pieces.find(p => p.r === r && p.c === c) || null;
     }
 
-    /** Orthogonal grid neighbours of a piece (the ones that can interlock with it). */
     function gridNeighbors(p) {
       const out = [];
-      const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-      for (const [dr, dc] of deltas) {
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
         const n = pieceAt(p.r + dr, p.c + dc);
         if (n) out.push(n);
       }
@@ -1056,10 +1071,11 @@
     }
 
     function triggerGroupWiggle(heldPiece) {
+      if (!heldPiece) return;
       const intensity = (CFG && CFG.wiggleIntensity) || 6;
-      const duration = (CFG && CFG.wiggleDuration) || 2000;
+      const durSec = (CFG && CFG.wiggleDurationSec) != null ? CFG.wiggleDurationSec : 2;
+      const duration = Math.max(500, durSec * 1000);
 
-      // Collect: held piece + its already-snapped group + grid neighbours + each neighbour's group
       const targets = new Set();
       const seed = heldPiece.group && heldPiece.group.length ? heldPiece.group : [heldPiece];
       seed.forEach(p => {
@@ -1071,18 +1087,20 @@
       });
 
       targets.forEach(p => {
-        const strong = (p !== heldPiece);
-        applyWiggleToPiece(p, strong ? intensity : Math.max(2, intensity * 0.55));
+        applyWiggleToPiece(p, p !== heldPiece ? intensity : Math.max(2, intensity * 0.55));
       });
 
-      statusEl.textContent = 'Wiggle! ×' + targets.size + ' (neighbours + groups)';
+      wiggleCheatCount++;
+      statusEl.textContent = 'Wiggle! ×' + targets.size + '  (total cheats: ' + wiggleCheatCount + ')';
       setTimeout(() => {
         targets.forEach(p => p.el.classList.remove('wiggling'));
       }, duration);
     }
 
-    /** Shift+click same piece 5× quickly → wiggle */
-    function noteShiftClick(piece) {
+    /** Multi-tap on same piece (Shift on mouse; free on touch). */
+    function notePieceTap(piece, requireShift, shiftHeld) {
+      if (requireShift && !shiftHeld) return false;
+      const need = Math.max(2, Math.min(20, (CFG && CFG.wiggleTapCount) || 5));
       const now = performance.now();
       if (shiftClickPiece === piece && (now - shiftClickLast) < 900) {
         shiftClickCount++;
@@ -1091,12 +1109,45 @@
         shiftClickCount = 1;
       }
       shiftClickLast = now;
-      if (shiftClickCount >= 5) {
+      if (shiftClickCount >= need) {
         shiftClickCount = 0;
         triggerGroupWiggle(piece);
         return true;
       }
       return false;
+    }
+
+    function armWiggleTracking(piece, pointerId, x, y) {
+      wiggleArmed = true;
+      wiggleTriggered = false;
+      wigglePointerId = pointerId;
+      wiggleHoldX = x;
+      wiggleHoldY = y;
+      wiggleSamples = [{ x, y, t: performance.now() }];
+    }
+
+    function tryArmTouchWiggle(clientX, clientY) {
+      if (!isDraggingPiece || !dragPiece || wiggleTriggered) return false;
+      const radius = (CFG && CFG.wiggleTouchRadius) || 130;
+      const dist = Math.hypot(clientX - wiggleHoldX, clientY - wiggleHoldY);
+      if (dist > radius) return false;
+      wiggleTouchArmed = true;
+      wiggleArmed = true;
+      statusEl.textContent = 'Wiggle armed — scratch the piece!';
+      return true;
+    }
+
+    function sampleWiggleMove(clientX, clientY) {
+      if (!wiggleArmed || wiggleTriggered) return;
+      wiggleSamples.push({ x: clientX, y: clientY, t: performance.now() });
+      if (wiggleSamples.length > 80) wiggleSamples.shift();
+      const cutoff = performance.now() - 900;
+      while (wiggleSamples.length && wiggleSamples[0].t < cutoff) wiggleSamples.shift();
+      if (detectShake(wiggleSamples)) {
+        wiggleTriggered = true;
+        triggerGroupWiggle(dragPiece);
+        clearWiggleWatch();
+      }
     }
 
     function onPiecePointerDown(e, piece) {
@@ -1107,16 +1158,27 @@
       e.stopPropagation();
       noteInteraction(true);
 
-      // Wiggle cheat: Shift + hold + shake, or Shift + 5 clicks
+      // Wiggle: mouse = Shift+shake or multi-tap; touch = hold then 2nd finger in radius + scratch
       clearWiggleWatch();
-      if (e.shiftKey && !piece.placed) {
-        if (noteShiftClick(piece)) {
-          // 5-click path already triggered
+      const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
+      if (!piece.placed) {
+        if (isTouch) {
+          // Always track hold position; 2nd finger will arm. Multi-tap without Shift on touch.
+          if (!notePieceTap(piece, false, false)) {
+            armWiggleTracking(piece, e.pointerId, e.clientX, e.clientY);
+            // Touch needs 2nd finger to fully arm shake — keep sampling soft until armed
+            wiggleTouchArmed = false;
+          }
+        } else if (e.shiftKey) {
+          if (!notePieceTap(piece, true, true)) {
+            armWiggleTracking(piece, e.pointerId, e.clientX, e.clientY);
+            wiggleTouchArmed = true; // mouse+shift fully armed
+          }
         } else {
-          wiggleArmed = true;
-          wiggleTriggered = false;
+          // Remember hold for possible touch-like paths; don't arm shake without Shift on mouse
+          wiggleHoldX = e.clientX;
+          wiggleHoldY = e.clientY;
           wigglePointerId = e.pointerId;
-          wiggleSamples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
         }
       }
 
@@ -1149,18 +1211,9 @@
     }
 
     function onPointerMove(e) {
-      if (wiggleArmed && !wiggleTriggered) {
-        wiggleSamples.push({ x: e.clientX, y: e.clientY, t: performance.now() });
-        if (wiggleSamples.length > 60) wiggleSamples.shift();
-        // drop old samples (>800ms)
-        const cutoff = performance.now() - 800;
-        while (wiggleSamples.length && wiggleSamples[0].t < cutoff) wiggleSamples.shift();
-        if (detectShake(wiggleSamples)) {
-          wiggleTriggered = true;
-          const held = dragPiece || null;
-          if (held) triggerGroupWiggle(held);
-          clearWiggleWatch();
-        }
+      // Shake samples: mouse+shift fully armed, or touch after 2nd finger
+      if (wiggleArmed && wiggleTouchArmed && !wiggleTriggered) {
+        sampleWiggleMove(e.clientX, e.clientY);
       }
       if (isPanning) {
         const dx = e.clientX - panStartX;
@@ -1342,6 +1395,16 @@
             wc.textContent = '';
           }
         }
+        const ww = document.getElementById('winWiggle');
+        if (ww) {
+          if (wiggleCheatCount > 0) {
+            ww.hidden = false;
+            ww.textContent = 'Wiggle! used ' + wiggleCheatCount + ' times!';
+          } else {
+            ww.hidden = true;
+            ww.textContent = '';
+          }
+        }
         fitToView();
         setTimeout(() => winOverlay.classList.add('show'), 320);
       }
@@ -1366,6 +1429,16 @@
     // Pan: middle mouse OR single finger/pen on empty viewport
     // Pinch: two fingers
     viewport.addEventListener('pointerdown', (e) => {
+      // Second finger while holding a piece → arm touch wiggle (within radius)
+      if (isDraggingPiece && dragPiece && e.pointerType !== 'mouse') {
+        if (tryArmTouchWiggle(e.clientX, e.clientY)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        // Outside radius: ignore so we don't start a pinch mid-drag
+        return;
+      }
       if (isDraggingPiece) return;
 
       // Middle mouse always pans
@@ -1397,6 +1470,10 @@
         panOriginX = panX;
         panOriginY = panY;
       } else if (activePointers.size === 2) {
+        // If holding a piece, second finger in radius arms wiggle (not pinch)
+        if (isDraggingPiece && dragPiece && tryArmTouchWiggle(e.clientX, e.clientY)) {
+          return;
+        }
         // Pinch start
         isPanning = false;
         viewport.classList.remove('panning');
@@ -1764,7 +1841,10 @@
         cheatDuration: 'cfg_cheatDuration',
         cheatStyle: 'cfg_cheatStyle',
         wiggleIntensity: 'cfg_wiggleIntensity',
-        wiggleDuration: 'cfg_wiggleDuration',
+        wiggleDurationSec: 'cfg_wiggleDurationSec',
+        wiggleSensitivity: 'cfg_wiggleSensitivity',
+        wiggleTapCount: 'cfg_wiggleTapCount',
+        wiggleTouchRadius: 'cfg_wiggleTouchRadius',
         reduceMotion: 'cfg_reduceMotion'
       };
 
@@ -2116,6 +2196,7 @@
 
     function resetCheatStats() {
       cheatPlaceCount = 0;
+      wiggleCheatCount = 0;
       cheatFastOverride = null;
     }
 
@@ -2361,5 +2442,5 @@
       }
     })();
 
-    console.info('[Art Jigsaw] v0.4.11 · wiggle-neighbours');
+    console.info('[Art Jigsaw] v0.4.12 · touch-wiggle · sensitivity · tap-count · wiggle-stats');
 
