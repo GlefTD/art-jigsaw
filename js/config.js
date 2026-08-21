@@ -3,7 +3,7 @@
  * Autosave + Cheat mode
  */
 window.JIGSAW_DEFAULTS = {
-  version: '0.4.4',
+  version: '0.4.5',
 
   tabScale: 2,
   tabBaseFactor: 0.55,
@@ -30,7 +30,7 @@ window.JIGSAW_DEFAULTS = {
   reduceMotion: false,
   createBatchSize: 256,
 
-  /** Viewport table surface: default|felt|linen|papyrus|dotted|cork|wood */
+  /** Viewport table surface: default|slate-plus|mimic|felt|linen|papyrus|dotted|cork|wood */
   tableStyle: 'default',
 
   /** Cheat auto-place duration per group (ms). Lower = faster */

@@ -269,6 +269,51 @@
       border-color: #6a4a30;
       box-shadow: inset 0 0 24px rgba(0,0,0,0.4);
     }
+
+    #viewport.table-slate-plus {
+      background-color: #151518;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+      background-size: 48px 48px;
+      background-position: center center;
+      border-color: #3a3a42;
+    }
+    #viewport.table-slate-plus #board {
+      background: #2a2a30;
+      border-color: #4a4a55;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.45);
+    }
+    #viewport.table-mimic {
+      background-color: #000;
+      isolation: isolate;
+      border-color: #222;
+    }
+    #viewport.table-mimic::after {
+      content: "";
+      position: absolute;
+      inset: -24px;
+      background-image: var(--mimic-img, none);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0.10;
+      filter: blur(32px) saturate(1.05);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #viewport.table-mimic #world,
+    #viewport.table-mimic #board,
+    #viewport.table-mimic .zoom-info,
+    #viewport.table-mimic .version-tag,
+    #viewport.table-mimic #hint-img {
+      z-index: 1;
+    }
+    #viewport.table-mimic #board {
+      background: rgba(18,18,22,0.5);
+      border-color: #3a3a42;
+      box-shadow: inset 0 0 28px rgba(0,0,0,0.55);
+    }
     #viewport.panning { cursor: grabbing; }
     #world {
       position: absolute;

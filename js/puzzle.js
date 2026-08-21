@@ -63,7 +63,7 @@
       }
 
       const vt = document.getElementById('versionTag');
-      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.4');
+      if (vt) vt.textContent = 'v' + (CFG.version || '0.4.5');
     }
     applyThemeFromConfig();
 
@@ -71,7 +71,7 @@
       const v = style || (CFG && CFG.tableStyle) || 'default';
       const el = document.getElementById('viewport');
       if (!el) return;
-      el.classList.remove('table-default','table-felt','table-linen','table-papyrus','table-dotted','table-cork','table-wood');
+      el.classList.remove('table-default','table-slate-plus','table-mimic','table-felt','table-linen','table-papyrus','table-dotted','table-cork','table-wood');
       el.classList.add('table-' + v);
       CFG.tableStyle = v;
       const sel = document.getElementById('tableStyle');
@@ -241,9 +241,14 @@
         sessionImgObjectUrl = url;
       }
       if (url) {
-        world.style.setProperty('--puzzle-img', 'url("' + url.replace(/"/g, '\"') + '")');
+        const cssUrl = 'url("' + url.replace(/"/g, '\"') + '")';
+        world.style.setProperty('--puzzle-img', cssUrl);
+        const vp = document.getElementById('viewport');
+        if (vp) vp.style.setProperty('--mimic-img', cssUrl);
       } else {
         world.style.setProperty('--puzzle-img', 'none');
+        const vp = document.getElementById('viewport');
+        if (vp) vp.style.setProperty('--mimic-img', 'none');
       }
       return url || '';
     }
@@ -1577,7 +1582,7 @@
 
 
 
-    // ========== Session autosave (v0.4.4 — light) ==========
+    // ========== Session autosave (v0.4.5 — light) ==========
     const SESSION_META_KEY = 'art-jigsaw-session-meta';
     const IDB_NAME = 'art-jigsaw-db';
     const IDB_STORE = 'session';
@@ -1645,7 +1650,7 @@
         if (!groupKeys.has(p.group)) groupKeys.set(p.group, gid++);
       });
       return {
-        version: '0.4.4',
+        version: '0.4.5',
         savedAt: Date.now(),
         cols, rows,
         shape: window._pieceShape || 'classic',
@@ -1961,5 +1966,5 @@
       });
     }
 
-    console.info('[Art Jigsaw] v0.4.4 · table-surfaces · felt-linen-papyrus');
+    console.info('[Art Jigsaw] v0.4.5 · slate-plus · mimic-blur');
 
